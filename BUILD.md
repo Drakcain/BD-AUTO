@@ -25,6 +25,8 @@ The validation checks:
 
 - PowerShell syntax
 - manifest uniqueness and HTTPS sources
+- manifest author, project, and license attribution
+- complete third-party notice coverage for every configured add-on
 - absence of logs, state, backups, secrets, and bundled executables
 - required installer files
 - scheduled-task trigger configuration
@@ -52,7 +54,9 @@ The build script validates the repository before compiling.
 5. Confirm Task Scheduler contains `BetterDiscord Auto Repair Watchdog`.
 6. Confirm the task has only logon and event triggers, with no recurring time trigger.
 7. Simulate a repair using the **Repair BetterDiscord** shortcut.
-8. Uninstall BD-AUTO and verify the task is removed.
+8. Confirm setup displays `INSTALL-NOTICE.txt` and installs `THIRD-PARTY-NOTICES.md`.
+9. Open **BD-AUTO > Third-Party Notices** from the Start Menu.
+10. Uninstall BD-AUTO and verify the task is removed.
 
 ## GitHub Release
 

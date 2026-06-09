@@ -4,6 +4,9 @@
     "file_name": "0BDFDB.plugin.js",
     "name": "BDFDB",
     "version": "4.5.3",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/ef178b35577fe6c757c375a195d0374bbc9be992/Library/0BDFDB.plugin.js",
     "enabled": true
   },
@@ -12,6 +15,9 @@
     "file_name": "BetterFriendList.plugin.js",
     "name": "BetterFriendList",
     "version": "1.7.1",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/e23da79dd6cd08ecbbde13be0598fe8e1808202f/Plugins/BetterFriendList/BetterFriendList.plugin.js",
     "enabled": true
   },
@@ -20,6 +26,9 @@
     "file_name": "BetterNsfwTag.plugin.js",
     "name": "BetterNsfwTag",
     "version": "1.3.3",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/c561c50fadf8ce7e7862e6a090e48196f6069b9b/Plugins/BetterNsfwTag/BetterNsfwTag.plugin.js",
     "enabled": true
   },
@@ -28,6 +37,9 @@
     "file_name": "BetterVolume.plugin.js",
     "name": "BetterVolume",
     "version": "3.2.4",
+    "author": "Zerthox",
+    "project_url": "https://github.com/Zerthox/BetterDiscord-Plugins",
+    "license_spdx": "MIT",
     "source_url": "https://raw.githubusercontent.com/Zerthox/BetterDiscord-Plugins/4661fc3b8215976b32924bd7e84fbd0b6a2c6909/dist/bd/BetterVolume.plugin.js",
     "enabled": true
   },
@@ -36,6 +48,10 @@
     "file_name": "CallTimeCounter.plugin.js",
     "name": "CallTimeCounter",
     "version": "1.0.2",
+    "author": "QWERT, KingGamingYT",
+    "additional_credit": "Rasync (original creator)",
+    "project_url": "https://github.com/KingGamingYT/CallTimeCounter",
+    "license_spdx": "NOASSERTION",
     "source_url": "https://raw.githubusercontent.com/KingGamingYT/CallTimeCounter/0952006f55c44815dfab3c1b827b7110fd97bc34/CallTimeCounter.plugin.js",
     "enabled": true
   },
@@ -44,6 +60,9 @@
     "file_name": "GameActivityToggle.plugin.js",
     "name": "GameActivityToggle",
     "version": "1.4.0",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/5ce223bba8d2cd25050df67d6592bfd96adefbb0/Plugins/GameActivityToggle/GameActivityToggle.plugin.js",
     "enabled": true
   },
@@ -52,6 +71,9 @@
     "file_name": "JumpToTop.plugin.js",
     "name": "JumpToTop",
     "version": "1.0.6",
+    "author": "SnappyCreeper",
+    "project_url": "https://github.com/snappycreeper/BetterDiscordPlugins",
+    "license_spdx": "NOASSERTION",
     "source_url": "https://raw.githubusercontent.com/snappycreeper/BetterDiscordPlugins/5054a6681f86e5b62f9b87d43982a8490665bc6e/JumpToTop/JumpToTop.plugin.js",
     "enabled": true
   },
@@ -60,6 +82,9 @@
     "file_name": "MoreRoleColors.plugin.js",
     "name": "MoreRoleColors",
     "version": "2.0.15",
+    "author": "DaddyBoard",
+    "project_url": "https://github.com/DaddyBoard/BD-Plugins",
+    "license_spdx": "NOASSERTION",
     "source_url": "https://raw.githubusercontent.com/DaddyBoard/BD-Plugins/f20a703f643c6545409c412105f7e0e2e4cfef99/MoreRoleColors/MoreRoleColors.plugin.js",
     "enabled": true
   },
@@ -68,6 +93,9 @@
     "file_name": "OnlineFriendCount.plugin.js",
     "name": "OnlineFriendCount",
     "version": "3.3.2",
+    "author": "Zerthox",
+    "project_url": "https://github.com/Zerthox/BetterDiscord-Plugins",
+    "license_spdx": "MIT",
     "source_url": "https://raw.githubusercontent.com/Zerthox/BetterDiscord-Plugins/4661fc3b8215976b32924bd7e84fbd0b6a2c6909/dist/bd/OnlineFriendCount.plugin.js",
     "enabled": true
   },
@@ -76,6 +104,9 @@
     "file_name": "ReadAllNotificationsButton.plugin.js",
     "name": "ReadAllNotificationsButton",
     "version": "1.8.5",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/80de11f2cc8b769f80ac3aceb41ec3262a8839ac/Plugins/ReadAllNotificationsButton/ReadAllNotificationsButton.plugin.js",
     "enabled": true
   },
@@ -84,6 +115,9 @@
     "file_name": "ServerCounter.plugin.js",
     "name": "ServerCounter",
     "version": "1.1.1",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/c561c50fadf8ce7e7862e6a090e48196f6069b9b/Plugins/ServerCounter/ServerCounter.plugin.js",
     "enabled": true
   },
@@ -92,6 +126,9 @@
     "file_name": "ServerDetails.plugin.js",
     "name": "ServerDetails",
     "version": "1.3.6",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/3010da472dda22cf9744a13616a8e0b3f3a5afb2/Plugins/ServerDetails/ServerDetails.plugin.js",
     "enabled": true
   },
@@ -100,6 +137,9 @@
     "file_name": "ShowBadgesInChat.plugin.js",
     "name": "ShowBadgesInChat",
     "version": "2.1.6",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/8cf2e0370d4a4bb19d3d3dc5f4b5bfa90bee9e25/Plugins/ShowBadgesInChat/ShowBadgesInChat.plugin.js",
     "enabled": true
   },
@@ -108,6 +148,9 @@
     "file_name": "StaffTag.plugin.js",
     "name": "StaffTag",
     "version": "1.7.4",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/20e22dfbf7f55d84b22a703a594242275c525399/Plugins/StaffTag/StaffTag.plugin.js",
     "enabled": true
   },
@@ -116,6 +159,9 @@
     "file_name": "Translator.plugin.js",
     "name": "Translator",
     "version": "2.8.2",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/19affbdb310b41dba68f3e7cf8f438f4ce35f096/Plugins/Translator/Translator.plugin.js",
     "enabled": true
   },
@@ -124,6 +170,9 @@
     "file_name": "WriteUpperCase.plugin.js",
     "name": "WriteUppercase",
     "version": "1.4.6",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/365d7a19b2fcfbacba7c795eb1536535f122ea6f/Plugins/WriteUpperCase/WriteUpperCase.plugin.js",
     "enabled": true
   },
@@ -132,6 +181,9 @@
     "file_name": "amoled-cord.theme.css",
     "name": "AMOLED-Cord",
     "version": "5.0.11",
+    "author": "LuckFire",
+    "project_url": "https://github.com/LuckFire/amoled-cord",
+    "license_spdx": "MIT",
     "source_url": "https://raw.githubusercontent.com/LuckFire/amoled-cord/343808e7d5297223e43868b3955da4cbbd01ceef/clients/amoled-cord.theme.css",
     "enabled": true
   },
@@ -140,6 +192,9 @@
     "file_name": "EmojiReplace.theme.css",
     "name": "EmojiReplace",
     "version": "1.0.0",
+    "author": "DevilBro",
+    "project_url": "https://github.com/mwittrien/BetterDiscordAddons",
+    "license_spdx": "GPL-2.0",
     "source_url": "https://raw.githubusercontent.com/mwittrien/BetterDiscordAddons/3b33c83ee23bd5b8eb384c99fb15a6f6d20873d6/Themes/EmojiReplace/EmojiReplace.theme.css",
     "enabled": true
   }

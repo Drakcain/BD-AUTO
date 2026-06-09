@@ -63,11 +63,25 @@ See [BUILD.md](BUILD.md).
 
 ## Important Notice
 
-BD-AUTO is not affiliated with Discord Inc. or BetterDiscord.
+BD-AUTO is independent automation glue. It is not affiliated with, authorized by, sponsored by, or endorsed by Discord Inc., BetterDiscord, GitHub, Microsoft, JRSoftware, or any plugin/theme author.
 
-BetterDiscord is a third-party Discord client modification. Client modifications may violate Discord's Terms of Service and can stop working after Discord updates. Use this project at your own risk.
+BetterDiscord is a third-party Discord client modification. Discord's current Terms restrict unauthorized software designed to modify its services. Installing or using BetterDiscord or BD-AUTO may violate Discord's terms or policies, can stop working after Discord updates, and may expose a user to service or account enforcement. Use this project at your own risk.
 
-Third-party plugins and themes are downloaded from their respective upstream projects. Review `payload/addons.manifest.json` before installing or publishing a modified build.
+BD-AUTO does not include Discord and does not bypass authentication, security controls, subscriptions, paid features, or account restrictions.
+
+Third-party plugins and themes are not embedded in the setup executable. They are downloaded from pinned upstream locations during installation and remain the property of their original authors.
+
+## Credits And Licensing
+
+- BetterDiscord and the BetterDiscord CLI are created and maintained by the [BetterDiscord project](https://github.com/BetterDiscord).
+- The official graphical [BetterDiscord Installer](https://github.com/BetterDiscord/Installer) is a separate manual alternative and is not bundled or invoked by BD-AUTO.
+- The Windows setup is compiled with [Inno Setup](https://jrsoftware.org/isinfo.php), created by Jordan Russell with portions by Martijn Laan.
+- Releases are built with [GitHub Actions](https://docs.github.com/actions).
+- Plugin and theme authors are credited individually in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+The repository's [MIT license](LICENSE) applies only to BD-AUTO's original scripts, documentation, manifest, workflow, and installer configuration. It does not relicense Discord, BetterDiscord, the BetterDiscord CLI, the BetterDiscord Installer, Inno Setup, GitHub Actions, or any plugin/theme.
+
+Three configured add-on repositories currently have no detected license. They are identified explicitly in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Absence of a license does not grant redistribution rights.
 
 ## CODEX Did This
 

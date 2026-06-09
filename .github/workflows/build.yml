@@ -55,4 +55,5 @@ jobs:
             "dist/BD-AUTO-Setup.exe#BD-AUTO Setup" `
             "dist/BD-AUTO-Setup.exe.sha256#SHA-256 checksum" `
             --title "BD-AUTO $env:GITHUB_REF_NAME" `
+            --notes "See [THIRD-PARTY-NOTICES.md](https://github.com/Drakcain/BD-AUTO/blob/$env:GITHUB_REF_NAME/THIRD-PARTY-NOTICES.md) for attribution, upstream licenses, and third-party project credits." `
             --generate-notes

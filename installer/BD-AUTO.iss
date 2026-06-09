@@ -25,6 +25,7 @@ OutputBaseFilename=BD-AUTO-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+InfoBeforeFile=..\INSTALL-NOTICE.txt
 SetupLogging=yes
 Uninstallable=yes
 UninstallDisplayName=BD-AUTO
@@ -32,12 +33,16 @@ MinVersion=10.0.17763
 
 [Files]
 Source: "..\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\INSTALL-NOTICE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autodesktop}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -ReopenDiscord"; WorkingDir: "{app}"
 Name: "{group}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -ReopenDiscord"; WorkingDir: "{app}"
 Name: "{group}\Uninstall BD-AUTO"; Filename: "{uninstallexe}"
 Name: "{group}\BD-AUTO on GitHub"; Filename: "{#MyAppURL}"
+Name: "{group}\Third-Party Notices"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\THIRD-PARTY-NOTICES.md"""; WorkingDir: "{app}"
 
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\Remove-BetterDiscord-WatchdogTask.ps1"""; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveWatchdogTask"

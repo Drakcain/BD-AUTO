@@ -15,6 +15,10 @@ BD-AUTO downloads:
 
 The BetterDiscord CLI archive is checked against the upstream release's published SHA-256 checksum before extraction.
 
+Add-on files are validated against their declared name and version metadata. This is an integrity and drift check, not a security audit or endorsement of third-party code. Review upstream source before enabling an add-on.
+
 ## Scope
 
 BD-AUTO does not collect telemetry, Discord tokens, messages, or credentials. It does not delete Discord user data.
+
+See `THIRD-PARTY-NOTICES.md` for ownership, license, and no-affiliation disclosures.

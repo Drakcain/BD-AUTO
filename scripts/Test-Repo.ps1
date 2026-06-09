@@ -19,6 +19,8 @@ $requiredFiles = @(
   'README.md',
   'BUILD.md',
   'LICENSE',
+  'INSTALL-NOTICE.txt',
+  'THIRD-PARTY-NOTICES.md',
   'SECURITY.md',
   '.gitignore',
   'installer\BD-AUTO.iss',
@@ -51,6 +53,20 @@ Test-Condition -Name 'Manifest count' -Passed ($manifest.Count -eq 18) -Detail "
 Test-Condition -Name 'Manifest duplicate filenames' -Passed (@($manifest | Group-Object kind, file_name | Where-Object Count -gt 1).Count -eq 0) -Detail 'none'
 Test-Condition -Name 'Manifest duplicate names' -Passed (@($manifest | Group-Object kind, name | Where-Object Count -gt 1).Count -eq 0) -Detail 'none'
 Test-Condition -Name 'Manifest HTTPS sources' -Passed (@($manifest | Where-Object source_url -notmatch '^https://').Count -eq 0) -Detail 'all HTTPS'
+Test-Condition -Name 'Manifest author credits' -Passed (@($manifest | Where-Object { [string]::IsNullOrWhiteSpace($_.author) }).Count -eq 0) -Detail 'all entries credited'
+Test-Condition -Name 'Manifest project URLs' -Passed (@($manifest | Where-Object project_url -notmatch '^https://github\.com/').Count -eq 0) -Detail 'all entries linked'
+Test-Condition -Name 'Manifest license classifications' -Passed (@($manifest | Where-Object { $_.license_spdx -notin @('GPL-2.0', 'MIT', 'NOASSERTION') }).Count -eq 0) -Detail 'all entries classified'
+Test-Condition -Name 'No-license classifications' -Passed (@($manifest | Where-Object license_spdx -eq 'NOASSERTION').Count -eq 3) -Detail '3 explicitly identified'
+
+$thirdPartyNotice = Get-Content -LiteralPath (Join-Path $RepoRoot 'THIRD-PARTY-NOTICES.md') -Raw
+$missingNoticeFiles = @($manifest | Where-Object { $thirdPartyNotice -notmatch [regex]::Escape($_.file_name) })
+Test-Condition -Name 'Add-on notice coverage' -Passed ($missingNoticeFiles.Count -eq 0) -Detail "$($manifest.Count - $missingNoticeFiles.Count)/$($manifest.Count) entries listed"
+Test-Condition -Name 'License scope clarification' -Passed ($thirdPartyNotice -match "MIT license.*applies only to BD-AUTO's original") -Detail 'third-party ownership preserved'
+Test-Condition -Name 'Discord terms disclosure' -Passed ($thirdPartyNotice -match 'Discord''s Terms of Service' -and $thirdPartyNotice -match 'may violate') -Detail 'risk disclosed'
+
+$installerScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'installer\BD-AUTO.iss') -Raw
+Test-Condition -Name 'Installer notice page' -Passed ($installerScript -match 'InfoBeforeFile=\.\.\\INSTALL-NOTICE\.txt') -Detail 'configured'
+Test-Condition -Name 'Installed legal files' -Passed ($installerScript -match 'THIRD-PARTY-NOTICES\.md' -and $installerScript -match '\.\.\\LICENSE') -Detail 'license and notices included'
 
 $forbiddenNames = @('state.json')
 $forbiddenDirectories = @('logs', 'backups', 'bin', 'BetterDiscord')
@@ -73,8 +89,18 @@ Test-Condition -Name 'Hidden task execution' -Passed ($taskScript -match '<Hidde
 Test-Condition -Name 'Repair CLI refresh' -Passed ($watchdogScript -match 'Update-BdcliForRepair' -and $watchdogScript -match 'bdcli_checksums\.txt' -and $watchdogScript -match 'Get-FileHash') -Detail 'checksum verified'
 
 $suspiciousPatterns = '(?i)(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|discord[_-]?token\s*[:=])'
-$suspicious = @($payloadFiles | Select-String -Pattern $suspiciousPatterns -ErrorAction SilentlyContinue)
+$repositoryFiles = Get-ChildItem -LiteralPath $RepoRoot -File -Recurse |
+  Where-Object { $_.FullName -notmatch '\\.git\\|\\dist\\|\\build\\' }
+$suspicious = @($repositoryFiles | Select-String -Pattern $suspiciousPatterns -ErrorAction SilentlyContinue)
 Test-Condition -Name 'Secret scan' -Passed ($suspicious.Count -eq 0) -Detail "$($suspicious.Count) suspicious match(es)"
+
+$trackedFiles = @(& git -C $RepoRoot ls-files)
+$forbiddenTracked = @($trackedFiles | Where-Object {
+  $_ -match '(^|/)(logs|backups|bin|BetterDiscord)(/|$)' -or
+  $_ -match '(^|/)state\.json$' -or
+  $_ -match '\.(exe|dll|zip|7z|rar|log)$'
+})
+Test-Condition -Name 'Clean tracked files' -Passed ($forbiddenTracked.Count -eq 0) -Detail "$($forbiddenTracked.Count) forbidden tracked file(s)"
 
 if ($failures.Count -gt 0) {
   Write-Host "`nRepository validation failed:"

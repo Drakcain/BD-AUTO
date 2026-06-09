@@ -1,0 +1,33 @@
+BD-AUTO - IMPORTANT NOTICE
+
+BD-AUTO is an independent automation wrapper. It is not affiliated with,
+authorized by, sponsored by, or endorsed by Discord Inc., BetterDiscord,
+GitHub, Microsoft, JRSoftware, or any plugin or theme author.
+
+BD-AUTO does not include Discord. It installs a third-party Discord client
+modification and downloads selected add-ons from their upstream authors.
+Discord's current Terms of Service restrict unauthorized software designed
+to modify its services. Installing or using BetterDiscord or BD-AUTO may
+violate Discord's terms or policies and may expose a user to enforcement.
+Use is entirely at the user's own risk.
+
+BD-AUTO does not bypass authentication, security controls, subscriptions,
+paid features, or account restrictions.
+
+The MIT license applies only to BD-AUTO's original automation code,
+documentation, manifest, workflow, and installer configuration. BetterDiscord,
+the BetterDiscord CLI, Inno Setup, and all plugins/themes remain subject to
+their own licenses and copyrights.
+
+The public setup does not embed plugin/theme files. They are downloaded
+directly from pinned upstream locations during installation. Three configured
+add-on repositories currently have no detected license; absence of a license
+does not grant redistribution rights.
+
+Review the complete installed THIRD-PARTY-NOTICES.md before redistribution or
+commercial use:
+https://github.com/Drakcain/BD-AUTO/blob/main/THIRD-PARTY-NOTICES.md
+
+Current BD-AUTO releases are non-commercial. Anyone monetizing BD-AUTO or a
+derivative must review Inno Setup's current commercial terms and obtain any
+required third-party permissions or licenses.
