@@ -25,6 +25,7 @@ $requiredFiles = @(
   '.gitignore',
   'installer\BD-AUTO.iss',
   'payload\Install-BD-AUTO.ps1',
+  'payload\Resolve-BDAutoTargetProfile.ps1',
   'payload\Sync-BetterDiscordAddons.ps1',
   'payload\addons.manifest.json',
   'payload\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1',
@@ -82,11 +83,20 @@ Test-Condition -Name 'Clean payload directories' -Passed ($forbiddenDirs.Count -
 
 $taskScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\BetterDiscordWatchdog\Install-BetterDiscord-WatchdogTask.ps1') -Raw
 $watchdogScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1') -Raw
+$installScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\Install-BD-AUTO.ps1') -Raw
+$profileResolver = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\Resolve-BDAutoTargetProfile.ps1') -Raw
 Test-Condition -Name 'Logon trigger' -Passed ($taskScript -match '<LogonTrigger>') -Detail 'configured'
 Test-Condition -Name 'Wake event trigger' -Passed ($taskScript -match 'Power-Troubleshooter' -and $taskScript -match 'EventID=1') -Detail 'configured'
 Test-Condition -Name 'No recurring timer' -Passed ($taskScript -notmatch 'RepetitionInterval|MSFT_TaskTimeTrigger|<TimeTrigger>') -Detail 'none'
 Test-Condition -Name 'Hidden task execution' -Passed ($taskScript -match '<Hidden>true</Hidden>' -and $taskScript -match '-WindowStyle Hidden') -Detail 'configured'
 Test-Condition -Name 'Repair CLI refresh' -Passed ($watchdogScript -match 'Update-BdcliForRepair' -and $watchdogScript -match 'bdcli_checksums\.txt' -and $watchdogScript -match 'Get-FileHash') -Detail 'checksum verified'
+Test-Condition -Name 'Target profile resolver' -Passed ($profileResolver -match 'running Discord process' -and $profileResolver -match 'interactive Explorer process' -and $profileResolver -match 'only Windows profile with Discord Stable') -Detail 'multi-source detection configured'
+Test-Condition -Name 'Discord process-tree shutdown' -Passed ($profileResolver -match 'Get-BDAutoDiscordProcessIds' -and $profileResolver -match 'ParentProcessId' -and $installScript -match 'Get-BDAutoDiscordProcessIds' -and $watchdogScript -match 'Get-BDAutoDiscordProcessIds') -Detail 'hidden child processes included'
+Test-Condition -Name 'Explicit profile overrides' -Passed ($installScript -match 'TargetRoamingAppData' -and $watchdogScript -match 'TargetRoamingAppData' -and $taskScript -match 'TargetRoamingAppData') -Detail 'installer, watchdog, and task support overrides'
+Test-Condition -Name 'Path-bound CLI install' -Passed ($installScript -match 'install --path \$discordApp\.FullName' -and $watchdogScript -match 'install --path \$stableSignature\.Path') -Detail 'installer and repair target exact Discord app'
+Test-Condition -Name 'Saved target state' -Passed ($installScript -match 'target-profile\.json' -and $watchdogScript -match 'target-profile\.json' -and $taskScript -match 'target-profile\.json') -Detail 'shared profile state configured'
+Test-Condition -Name 'Original-user setup' -Passed ($installerScript -match 'ExecAsOriginalUser' -and $installerScript -match '-SkipTaskInstall') -Detail 'per-user work avoids elevated AppData'
+Test-Condition -Name 'Target-bound task action' -Passed ($taskScript -match '-TargetUserName' -and $taskScript -match '-TargetLocalAppData') -Detail 'scheduled repair remains on Discord user profile'
 
 $suspiciousPatterns = '(?i)(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|discord[_-]?token\s*[:=])'
 $repositoryFiles = Get-ChildItem -LiteralPath $RepoRoot -File -Recurse |

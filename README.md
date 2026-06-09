@@ -43,6 +43,37 @@ Use either shortcut created by setup:
 
 The repair shortcut runs the watchdog with `-ForceRepair -ReopenDiscord`.
 
+## Troubleshooting Add-On Toggles
+
+If BetterDiscord appears in Discord but the Plugins or Themes page is empty:
+
+1. Exit Discord completely.
+2. Run **Repair BetterDiscord** from the desktop or Start Menu.
+3. Reopen Discord and check **User Settings > BetterDiscord > Plugins/Themes**.
+
+BD-AUTO records the Windows user and exact paths it targeted in:
+
+```text
+C:\Tools\BD-AUTO\runtime\target-profile.json
+C:\Tools\BD-AUTO\logs\installer-YYYYMMDD.log
+C:\Tools\BD-AUTO\runtime\logs\watchdog-YYYYMMDD.log
+```
+
+The active files must be under the same Windows profile that runs Discord:
+
+```text
+<UserProfile>\AppData\Roaming\BetterDiscord\plugins
+<UserProfile>\AppData\Roaming\BetterDiscord\themes
+```
+
+Setup is intentionally bound to one Discord Windows profile. If UAC requests credentials for a different administrator account, BD-AUTO still performs Discord, BetterDiscord, add-on, and relaunch work as the original desktop user, then registers the elevated scheduled task for that user's SID.
+
+For an ambiguous multi-user PC, run a targeted repair:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -ForceRepair -ReopenDiscord -TargetUserName "WindowsUserName"
+```
+
 ## Uninstall
 
 Use **Settings > Apps > Installed apps > BD-AUTO**, or use **BD-AUTO > Uninstall BD-AUTO** from the Start Menu.

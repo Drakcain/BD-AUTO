@@ -10,26 +10,52 @@ param(
   [int]$DiscordWaitTimeoutSeconds = 300,
   [int]$DiscordStabilizeSeconds = 10,
   [int]$DiscordStabilizePollSeconds = 2,
-  [int]$BackupRetentionCount = 3
+  [int]$BackupRetentionCount = 3,
+  [string]$TargetUserName,
+  [string]$TargetRoamingAppData,
+  [string]$TargetLocalAppData
 )
 
 $ErrorActionPreference = 'Stop'
 
 $BaseDir = $PSScriptRoot
 $RootDir = Split-Path -Parent $BaseDir
-$LogDir = Join-Path $BaseDir 'logs'
-$BackupRoot = Join-Path $BaseDir 'backups'
-$StatePath = Join-Path $BaseDir 'state.json'
+$ProfileResolverPath = Join-Path $RootDir 'Resolve-BDAutoTargetProfile.ps1'
+if (-not (Test-Path -LiteralPath $ProfileResolverPath)) {
+  throw "Target profile resolver not found: $ProfileResolverPath"
+}
+. $ProfileResolverPath
+$SavedProfilePath = Join-Path $RootDir 'runtime\target-profile.json'
+if (
+  (Test-Path -LiteralPath $SavedProfilePath) -and
+  -not $TargetUserName -and
+  -not $TargetRoamingAppData -and
+  -not $TargetLocalAppData
+) {
+  $savedProfile = Get-Content -LiteralPath $SavedProfilePath -Raw | ConvertFrom-Json
+  $TargetUserName = $savedProfile.user_name
+  $TargetRoamingAppData = $savedProfile.roaming_app_data
+  $TargetLocalAppData = $savedProfile.local_app_data
+}
+$TargetProfile = Resolve-BDAutoTargetProfile `
+  -TargetUserName $TargetUserName `
+  -TargetRoamingAppData $TargetRoamingAppData `
+  -TargetLocalAppData $TargetLocalAppData
+
+$RuntimeRoot = Join-Path $RootDir 'runtime'
+$LogDir = Join-Path $RuntimeRoot 'logs'
+$BackupRoot = Join-Path $RuntimeRoot 'backups'
+$StatePath = Join-Path $RuntimeRoot 'state.json'
 $ManifestPath = Join-Path $RootDir 'addons.manifest.json'
 $AddonSyncPath = Join-Path $RootDir 'Sync-BetterDiscordAddons.ps1'
 $AddonCacheRoot = Join-Path $RootDir 'BetterDiscord'
-$DiscordRoot = Join-Path $env:LOCALAPPDATA 'Discord'
-$ActiveBDRoot = Join-Path $env:APPDATA 'BetterDiscord'
+$DiscordRoot = $TargetProfile.DiscordRoot
+$ActiveBDRoot = $TargetProfile.BetterDiscordRoot
 $ActivePlugins = Join-Path $ActiveBDRoot 'plugins'
 $ActiveThemes = Join-Path $ActiveBDRoot 'themes'
 $ActiveData = Join-Path $ActiveBDRoot 'data'
 
-New-Item -ItemType Directory -Force -Path $BaseDir, $LogDir, $BackupRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $RuntimeRoot, $LogDir, $BackupRoot | Out-Null
 $LogPath = Join-Path $LogDir ("watchdog-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
 
 function Write-Log {
@@ -73,11 +99,14 @@ function Save-State {
 }
 
 function Get-DiscordProcesses {
-  return @(Get-Process -Name Discord,DiscordCanary,DiscordPTB -ErrorAction SilentlyContinue)
+  $ids = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile)
+  return @($ids | ForEach-Object {
+    Get-Process -Id $_ -ErrorAction SilentlyContinue
+  } | Where-Object { $_ })
 }
 
 function Get-DiscordApp {
-  $running = Get-Process -Name Discord -ErrorAction SilentlyContinue |
+  $running = Get-DiscordProcesses |
     Where-Object { $_.Path -and (Test-Path -LiteralPath $_.Path) } |
     Select-Object -First 1
   if ($running) {
@@ -160,7 +189,7 @@ function Get-BdcliPath {
   $command = Get-Command bdcli -ErrorAction SilentlyContinue
   if ($command -and $command.Source -and (Test-Path -LiteralPath $command.Source)) { return $command.Source }
 
-  $wingetLink = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\bdcli.exe'
+  $wingetLink = Join-Path $TargetProfile.LocalAppData 'Microsoft\WinGet\Links\bdcli.exe'
   if (Test-Path -LiteralPath $wingetLink) { return $wingetLink }
   return $null
 }
@@ -228,12 +257,7 @@ function Update-BdcliForRepair {
 function Stop-Discord {
   param([int]$TimeoutSeconds = 15)
 
-  $processes = Get-DiscordProcesses
-  $updateProcesses = Get-Process -Name Update -ErrorAction SilentlyContinue | Where-Object {
-    try { $_.Path -and $_.Path.StartsWith($DiscordRoot, [System.StringComparison]::OrdinalIgnoreCase) }
-    catch { $false }
-  }
-  $processes = @($processes + $updateProcesses | Sort-Object Id -Unique)
+  $processes = @(Get-DiscordProcesses | Sort-Object Id -Unique)
   if ($processes.Count -eq 0) { return @() }
 
   foreach ($process in $processes) {
@@ -348,6 +372,8 @@ function Repair-WatchdogTaskDefinition {
   $definitionCurrent = (
     $arguments -match '-WaitForDiscord' -and
     $arguments -match '-DiscordWaitTimeoutSeconds 300' -and
+    $arguments -match '-TargetRoamingAppData' -and
+    $arguments -match [regex]::Escape($TargetProfile.RoamingAppData) -and
     $hasLogonTrigger -and
     $hasEventTrigger -and
     -not $hasTimeTrigger
@@ -363,13 +389,18 @@ function Repair-WatchdogTaskDefinition {
   }
 
   Write-Log 'Updating stale scheduled task definition.'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskInstaller | ForEach-Object { Write-Log "$_" }
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskInstaller `
+    -TargetUserName $TargetProfile.UserName `
+    -TargetUserSid $TargetProfile.UserSid `
+    -TargetRoamingAppData $TargetProfile.RoamingAppData `
+    -TargetLocalAppData $TargetProfile.LocalAppData | ForEach-Object { Write-Log "$_" }
   if ($LASTEXITCODE -ne 0) {
     Write-Log "Scheduled task update failed with exit code $LASTEXITCODE." 'ERROR'
   }
 }
 
 $state = Load-State
+Write-BDAutoTargetProfileLog -Profile $TargetProfile -WriteLog ${function:Write-Log}
 Repair-WatchdogTaskDefinition
 if ($StartupDelaySeconds -gt 0) {
   Write-Log "Startup delay: $StartupDelaySeconds second(s)."
@@ -449,7 +480,7 @@ if ($wasRunning) {
 
 $bdcli = Update-BdcliForRepair
 
-$output = & $bdcli install --channel stable 2>&1 | Out-String
+$output = & $bdcli install --path $stableSignature.Path 2>&1 | Out-String
 Write-Log "bdcli output: $output"
 $installExitCode = $LASTEXITCODE
 if ($installExitCode -ne 0) {
@@ -475,6 +506,10 @@ $state.discord_reopen_success = $reopened
 $state.post_repair_injection_installed = $postInjection
 $state.active_plugin_count = Get-Count -Path $ActivePlugins -Filter '*.plugin.js'
 $state.active_theme_count = Get-Count -Path $ActiveThemes -Filter '*.theme.css'
+$state.target_user = $TargetProfile.UserName
+$state.target_user_sid = $TargetProfile.UserSid
+$state.target_betterdiscord_root = $TargetProfile.BetterDiscordRoot
+$state.target_discord_root = $TargetProfile.DiscordRoot
 Save-State $state
 Remove-OldBackups -Keep $BackupRetentionCount
 

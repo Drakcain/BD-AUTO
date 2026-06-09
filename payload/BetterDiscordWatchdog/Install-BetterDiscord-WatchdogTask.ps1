@@ -1,3 +1,12 @@
+[CmdletBinding()]
+param(
+  [string]$TargetUserName,
+  [string]$TargetUserSid,
+  [string]$TargetRoamingAppData,
+  [string]$TargetLocalAppData,
+  [string]$ProfileStatePath = 'C:\Tools\BD-AUTO\runtime\target-profile.json'
+)
+
 $ErrorActionPreference = 'Stop'
 
 $taskName = 'BetterDiscord Auto Repair Watchdog'
@@ -6,12 +15,49 @@ if (-not (Test-Path -LiteralPath $scriptPath)) {
   throw "Watchdog script not found: $scriptPath"
 }
 
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$userSid = $identity.User.Value
-$userName = $identity.Name
+$profileResolverPath = 'C:\Tools\BD-AUTO\Resolve-BDAutoTargetProfile.ps1'
+if (-not (Test-Path -LiteralPath $profileResolverPath)) {
+  throw "Target profile resolver not found: $profileResolverPath"
+}
+. $profileResolverPath
+
+if (
+  (Test-Path -LiteralPath $ProfileStatePath) -and
+  -not $TargetUserName -and
+  -not $TargetUserSid -and
+  -not $TargetRoamingAppData -and
+  -not $TargetLocalAppData
+) {
+  $savedProfile = Get-Content -LiteralPath $ProfileStatePath -Raw | ConvertFrom-Json
+  $TargetUserName = $savedProfile.user_name
+  $TargetUserSid = $savedProfile.user_sid
+  $TargetRoamingAppData = $savedProfile.roaming_app_data
+  $TargetLocalAppData = $savedProfile.local_app_data
+}
+
+$targetProfile = Resolve-BDAutoTargetProfile `
+  -TargetUserName $TargetUserName `
+  -TargetRoamingAppData $TargetRoamingAppData `
+  -TargetLocalAppData $TargetLocalAppData
+if ($TargetUserSid) { $targetProfile.UserSid = $TargetUserSid }
+if (-not $targetProfile.UserSid) {
+  throw "Could not resolve a SID for target user '$($targetProfile.UserName)'."
+}
+
+$userSid = $targetProfile.UserSid
+$userName = $targetProfile.UserName
 $escapedScriptPath = [Security.SecurityElement]::Escape($scriptPath)
 $escapedUserSid = [Security.SecurityElement]::Escape($userSid)
 $escapedAuthor = [Security.SecurityElement]::Escape($userName)
+$watchdogArguments = (
+  '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass ' +
+  "-File `"$scriptPath`" -WaitForDiscord " +
+  '-DiscordWaitTimeoutSeconds 300 -DiscordStabilizeSeconds 10 -DiscordStabilizePollSeconds 2 ' +
+  "-TargetUserName `"$($targetProfile.UserName)`" " +
+  "-TargetRoamingAppData `"$($targetProfile.RoamingAppData)`" " +
+  "-TargetLocalAppData `"$($targetProfile.LocalAppData)`""
+)
+$escapedWatchdogArguments = [Security.SecurityElement]::Escape($watchdogArguments)
 $subscription = @"
 <QueryList>
   <Query Id="0" Path="System">
@@ -71,7 +117,7 @@ $taskXml = @"
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;$escapedScriptPath&quot; -WaitForDiscord -DiscordWaitTimeoutSeconds 300 -DiscordStabilizeSeconds 10 -DiscordStabilizePollSeconds 2</Arguments>
+      <Arguments>$escapedWatchdogArguments</Arguments>
       <WorkingDirectory>C:\Tools\BD-AUTO</WorkingDirectory>
     </Exec>
   </Actions>
@@ -80,4 +126,7 @@ $taskXml = @"
 
 Register-ScheduledTask -TaskName $taskName -Xml $taskXml -Force | Out-Null
 Write-Host "Installed scheduled task: $taskName"
+Write-Host "Target user: $($targetProfile.UserName) [$($targetProfile.UserSid)]"
+Write-Host "Target BetterDiscord: $($targetProfile.BetterDiscordRoot)"
+Write-Host "Target Discord: $($targetProfile.DiscordRoot)"
 Write-Host 'Triggers: user logon and resume from sleep. No recurring timer.'

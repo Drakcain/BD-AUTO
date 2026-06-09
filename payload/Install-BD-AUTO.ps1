@@ -6,10 +6,21 @@ param(
   [switch]$SkipAddonSync,
   [switch]$SkipTaskInstall,
   [switch]$SkipShortcuts,
-  [switch]$NoLaunchDiscord
+  [switch]$NoLaunchDiscord,
+  [string]$TargetUserName,
+  [string]$TargetRoamingAppData,
+  [string]$TargetLocalAppData
 )
 
 $ErrorActionPreference = 'Stop'
+$InvocationParameters = @{} + $PSBoundParameters
+$SourceRoot = Split-Path -Parent $PSCommandPath
+$TargetRoot = 'C:\Tools\BD-AUTO'
+$ProfileResolverPath = Join-Path $SourceRoot 'Resolve-BDAutoTargetProfile.ps1'
+if (-not (Test-Path -LiteralPath $ProfileResolverPath)) {
+  throw "Target profile resolver not found: $ProfileResolverPath"
+}
+. $ProfileResolverPath
 
 function Write-InstallLog {
   param([string]$Message, [string]$Level = 'INFO')
@@ -28,8 +39,11 @@ function Test-RunningAsAdmin {
 }
 
 function Invoke-SelfElevate {
+  param($ResolvedProfile)
+
   $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
-  foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+  foreach ($entry in $script:InvocationParameters.GetEnumerator()) {
+    if ($entry.Key -in @('TargetUserName', 'TargetRoamingAppData', 'TargetLocalAppData')) { continue }
     if ($entry.Value -is [bool]) {
       if ($entry.Value) { $argList += "-$($entry.Key)" }
     } else {
@@ -37,6 +51,9 @@ function Invoke-SelfElevate {
       $argList += "$($entry.Value)"
     }
   }
+  $argList += '-TargetUserName', $ResolvedProfile.UserName
+  $argList += '-TargetRoamingAppData', $ResolvedProfile.RoamingAppData
+  $argList += '-TargetLocalAppData', $ResolvedProfile.LocalAppData
   Write-Host 'Elevation required. Relaunching installer as administrator...'
   Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argList | Out-Null
   exit
@@ -49,7 +66,7 @@ function Get-BdcliPath {
   $cmd = Get-Command bdcli -ErrorAction SilentlyContinue
   if ($cmd -and $cmd.Source -and (Test-Path -LiteralPath $cmd.Source)) { return $cmd.Source }
 
-  $winGetPackages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+  $winGetPackages = Join-Path $TargetProfile.LocalAppData 'Microsoft\WinGet\Packages'
   if (Test-Path -LiteralPath $winGetPackages) {
     $candidate = Get-ChildItem -Path $winGetPackages -Filter 'betterdiscord.cli*' -Directory -ErrorAction SilentlyContinue |
       Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -59,7 +76,7 @@ function Get-BdcliPath {
     }
   }
 
-  $links = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\bdcli.exe'
+  $links = Join-Path $TargetProfile.LocalAppData 'Microsoft\WinGet\Links\bdcli.exe'
   if (Test-Path -LiteralPath $links) { return $links }
 
   return $null
@@ -177,13 +194,11 @@ function Install-BetterDiscord {
     throw 'BetterDiscord CLI not available after setup.'
   }
 
-  $runningDiscord = @(Get-Process -Name Discord,DiscordCanary,DiscordPTB -ErrorAction SilentlyContinue)
-  $discordRoot = Join-Path $env:LOCALAPPDATA 'Discord'
-  $updateProcesses = @(Get-Process -Name Update -ErrorAction SilentlyContinue | Where-Object {
-    try { $_.Path -and $_.Path.StartsWith($discordRoot, [System.StringComparison]::OrdinalIgnoreCase) }
-    catch { $false }
-  })
-  $discordProcesses = @($runningDiscord + $updateProcesses | Sort-Object Id -Unique)
+  $discordRoot = $TargetProfile.DiscordRoot
+  $discordProcessIds = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile)
+  $discordProcesses = @($discordProcessIds | ForEach-Object {
+    Get-Process -Id $_ -ErrorAction SilentlyContinue
+  } | Where-Object { $_ } | Sort-Object Id -Unique)
   if ($discordProcesses.Count -gt 0) {
     Write-InstallLog ('Stopping Discord before BetterDiscord install: {0}' -f (($discordProcesses | Select-Object -ExpandProperty Id) -join ', '))
     foreach ($proc in $discordProcesses) {
@@ -202,8 +217,16 @@ function Install-BetterDiscord {
     }
   }
 
-  Write-InstallLog "Running BetterDiscord CLI install via $bdcli"
-  & $bdcli install --channel stable 2>&1 | ForEach-Object { Write-Host $_ }
+  $discordApp = Get-ChildItem -LiteralPath $discordRoot -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Discord.exe') } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+  if (-not $discordApp) {
+    throw "Discord Stable installation was not found for $($TargetProfile.UserName): $discordRoot"
+  }
+
+  Write-InstallLog "Running BetterDiscord CLI install via $bdcli against $($discordApp.FullName)"
+  & $bdcli install --path $discordApp.FullName 2>&1 | ForEach-Object { Write-Host $_ }
   $code = $LASTEXITCODE
   Write-InstallLog "bdcli install exit code: $code"
   if ($code -ne 0) {
@@ -222,7 +245,7 @@ function Start-Discord {
     return
   }
 
-  $updateExe = Join-Path $env:LOCALAPPDATA 'Discord\Update.exe'
+  $updateExe = Join-Path $TargetProfile.DiscordRoot 'Update.exe'
   if (-not (Test-Path -LiteralPath $updateExe)) {
     throw "Discord launcher not found: $updateExe"
   }
@@ -252,7 +275,11 @@ function Install-WatchdogTask {
   }
 
   Write-InstallLog 'Installing BetterDiscord watchdog scheduled task.'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskScript | Out-Host
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskScript `
+    -TargetUserName $TargetProfile.UserName `
+    -TargetUserSid $TargetProfile.UserSid `
+    -TargetRoamingAppData $TargetProfile.RoamingAppData `
+    -TargetLocalAppData $TargetProfile.LocalAppData | Out-Host
   if ($LASTEXITCODE -ne 0) {
     throw "Scheduled task installer failed with exit code $LASTEXITCODE"
   }
@@ -293,33 +320,67 @@ function Sync-AddonManifest {
   $manifestPath = Join-Path $TargetRoot 'addons.manifest.json'
   if (-not (Test-Path -LiteralPath $syncScript)) { throw "Addon sync script not found: $syncScript" }
 
-  Write-InstallLog 'Synchronizing curated BetterDiscord addons.'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ManifestPath $manifestPath -ActiveRoot (Join-Path $env:APPDATA 'BetterDiscord') -CacheRoot (Join-Path $TargetRoot 'BetterDiscord') -Prune | Out-Host
+  Write-InstallLog "Synchronizing curated BetterDiscord addons to $($TargetProfile.BetterDiscordRoot)."
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript `
+    -ManifestPath $manifestPath `
+    -ActiveRoot $TargetProfile.BetterDiscordRoot `
+    -CacheRoot (Join-Path $TargetRoot 'BetterDiscord') `
+    -Prune | Out-Host
   if ($LASTEXITCODE -ne 0) {
     throw "Addon sync failed with exit code $LASTEXITCODE"
   }
+
+  $pluginCount = (Get-ChildItem -LiteralPath (Join-Path $TargetProfile.BetterDiscordRoot 'plugins') -Filter '*.plugin.js' -File -ErrorAction SilentlyContinue | Measure-Object).Count
+  $themeCount = (Get-ChildItem -LiteralPath (Join-Path $TargetProfile.BetterDiscordRoot 'themes') -Filter '*.theme.css' -File -ErrorAction SilentlyContinue | Measure-Object).Count
+  Write-InstallLog "Active addon verification: plugins=$pluginCount, themes=$themeCount, path=$($TargetProfile.BetterDiscordRoot)"
+  if ($pluginCount -ne 16 -or $themeCount -ne 2) {
+    throw "Active addon verification failed. Expected plugins=16/themes=2; found plugins=$pluginCount/themes=$themeCount."
+  }
 }
+
+function Save-TargetProfileState {
+  $runtimeDir = Join-Path $TargetRoot 'runtime'
+  New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+  $statePath = Join-Path $runtimeDir 'target-profile.json'
+  $profileState = [ordered]@{
+    user_name = $TargetProfile.UserName
+    user_sid = $TargetProfile.UserSid
+    profile_root = $TargetProfile.ProfileRoot
+    roaming_app_data = $TargetProfile.RoamingAppData
+    local_app_data = $TargetProfile.LocalAppData
+    betterdiscord_root = $TargetProfile.BetterDiscordRoot
+    discord_root = $TargetProfile.DiscordRoot
+    detection_source = $TargetProfile.DetectionSource
+    saved_at = (Get-Date).ToString('o')
+  }
+  [System.IO.File]::WriteAllText(
+    $statePath,
+    ($profileState | ConvertTo-Json -Depth 4),
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+  Write-InstallLog "Saved target profile state: $statePath"
+}
+
+$TargetProfile = Resolve-BDAutoTargetProfile `
+  -TargetUserName $TargetUserName `
+  -TargetRoamingAppData $TargetRoamingAppData `
+  -TargetLocalAppData $TargetLocalAppData
 
 if (-not $DryRun -and -not $SkipTaskInstall -and -not (Test-RunningAsAdmin)) {
-  Invoke-SelfElevate
+  Invoke-SelfElevate -ResolvedProfile $TargetProfile
 }
-
-$SourceRoot = Split-Path -Parent $PSCommandPath
-$TargetRoot = 'C:\Tools\BD-AUTO'
 
 New-Item -ItemType Directory -Force -Path $TargetRoot | Out-Null
 Write-InstallLog "Starting BD-AUTO install from $SourceRoot to $TargetRoot"
+Write-BDAutoTargetProfileLog -Profile $TargetProfile -WriteLog ${function:Write-InstallLog}
 
 if (-not $DryRun) {
   Copy-Bundle -SourceRoot $SourceRoot -DestinationRoot $TargetRoot
-  New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot 'logs'), (Join-Path $TargetRoot 'backups'), (Join-Path $TargetRoot 'bin') | Out-Null
-  $statePath = Join-Path $TargetRoot 'BetterDiscordWatchdog\state.json'
-  if (-not (Test-Path -LiteralPath $statePath)) {
-    '{}' | Set-Content -LiteralPath $statePath -Encoding UTF8
-  }
+  New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot 'logs'), (Join-Path $TargetRoot 'runtime'), (Join-Path $TargetRoot 'bin') | Out-Null
   Ensure-BdcliBinary
   Install-BetterDiscord
   Sync-AddonManifest
+  Save-TargetProfileState
   Install-WatchdogTask
   New-DesktopShortcut
   Start-Discord
