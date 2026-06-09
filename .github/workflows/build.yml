@@ -16,7 +16,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Inno Setup
         shell: powershell
@@ -38,7 +38,7 @@ jobs:
         run: .\scripts\Build.ps1 -Version '${{ steps.version.outputs.version }}'
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: BD-AUTO-Setup
           path: |

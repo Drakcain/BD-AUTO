@@ -42,7 +42,11 @@ foreach ($file in $powerShellFiles) {
   Test-Condition -Name "Syntax $($file.Name)" -Passed (-not $parseErrors) -Detail $(if ($parseErrors) { $parseErrors[0].Message } else { 'valid' })
 }
 
-$manifest = @(Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\addons.manifest.json') -Raw | ConvertFrom-Json)
+$parsedManifest = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\addons.manifest.json') -Raw | ConvertFrom-Json
+$manifest = @()
+foreach ($entry in $parsedManifest) {
+  $manifest += $entry
+}
 Test-Condition -Name 'Manifest count' -Passed ($manifest.Count -eq 18) -Detail "$($manifest.Count) entries"
 Test-Condition -Name 'Manifest duplicate filenames' -Passed (@($manifest | Group-Object kind, file_name | Where-Object Count -gt 1).Count -eq 0) -Detail 'none'
 Test-Condition -Name 'Manifest duplicate names' -Passed (@($manifest | Group-Object kind, name | Where-Object Count -gt 1).Count -eq 0) -Detail 'none'
