@@ -17,10 +17,24 @@ $InvocationParameters = @{} + $PSBoundParameters
 $SourceRoot = Split-Path -Parent $PSCommandPath
 $TargetRoot = 'C:\Tools\BD-AUTO'
 $ProfileResolverPath = Join-Path $SourceRoot 'Resolve-BDAutoTargetProfile.ps1'
+$CompatibilityPath = Join-Path $SourceRoot 'Get-BDAutoCompatibility.ps1'
 if (-not (Test-Path -LiteralPath $ProfileResolverPath)) {
   throw "Target profile resolver not found: $ProfileResolverPath"
 }
+if (-not (Test-Path -LiteralPath $CompatibilityPath)) {
+  throw "Compatibility helper not found: $CompatibilityPath"
+}
 . $ProfileResolverPath
+. $CompatibilityPath
+$InstallStatus = [ordered]@{
+  CoreInstalled = $false
+  InjectionVerified = $false
+  ManagedPlugins = 0
+  ManagedThemes = 0
+  DiscordRelaunched = $false
+  ScheduledTask = 'not-attempted'
+  ManualRepairShortcut = $false
+}
 
 function Write-InstallLog {
   param([string]$Message, [string]$Level = 'INFO')
@@ -30,12 +44,6 @@ function Write-InstallLog {
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
   Add-Content -LiteralPath $installLogPath -Value $line
   Write-Host $line
-}
-
-function Test-RunningAsAdmin {
-  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 function Invoke-SelfElevate {
@@ -105,6 +113,11 @@ function Copy-Bundle {
 function Ensure-BdcliBinary {
   $existingBdcli = Get-BdcliPath
 
+  if ($existingBdcli -and $existingBdcli -ieq (Join-Path $TargetRoot 'bin\bdcli.exe')) {
+    Write-InstallLog "Using bundled BetterDiscord CLI: $existingBdcli"
+    return
+  }
+
   if ($SkipBdcliDownload) {
     if ($existingBdcli) {
       Write-InstallLog "BetterDiscord CLI refresh skipped; using existing binary: $existingBdcli" 'WARN'
@@ -164,18 +177,7 @@ function Ensure-BdcliBinary {
       return
     }
 
-    $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if ($winget) {
-      Write-InstallLog 'Attempting winget fallback install for BetterDiscord CLI.'
-      & winget install --id betterdiscord.cli -e --source winget --accept-package-agreements --accept-source-agreements | Out-Host
-      $bdcli = Get-BdcliPath
-      if ($bdcli) {
-        Copy-Item -LiteralPath $bdcli -Destination (Join-Path $binDir 'bdcli.exe') -Force
-        Write-InstallLog "Copied winget-installed bdcli to $(Join-Path $binDir 'bdcli.exe')"
-      }
-    } else {
-      throw
-    }
+    throw 'A checksum-verified BetterDiscord CLI could not be prepared. winget is intentionally not required or invoked.'
   } finally {
     if ($tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
     if ($zipPath) { Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue }
@@ -232,17 +234,29 @@ function Install-BetterDiscord {
   if ($code -ne 0) {
     throw "bdcli install failed with exit code $code"
   }
+
+  $coreIndex = Join-Path $discordApp.FullName 'modules\discord_desktop_core-1\discord_desktop_core\index.js'
+  $injectionVerified = $false
+  if (Test-Path -LiteralPath $coreIndex) {
+    $coreText = Get-Content -LiteralPath $coreIndex -Raw
+    $injectionVerified = $coreText -match '(?i)betterdiscord\.asar'
+  }
+  $script:InstallStatus.InjectionVerified = $injectionVerified
+  if (-not $injectionVerified) {
+    throw "BetterDiscord CLI completed, but injection was not verified in $coreIndex"
+  }
+  Write-InstallLog "BetterDiscord injection verified: $coreIndex"
 }
 
 function Start-Discord {
   if ($NoLaunchDiscord) {
     Write-InstallLog 'Discord launch skipped.'
-    return
+    return $false
   }
 
   if (Get-Process -Name Discord -ErrorAction SilentlyContinue) {
     Write-InstallLog 'Discord is already running.'
-    return
+    return $true
   }
 
   $updateExe = Join-Path $TargetProfile.DiscordRoot 'Update.exe'
@@ -251,12 +265,23 @@ function Start-Discord {
   }
 
   Write-InstallLog 'Launching Discord.'
-  Start-Process -FilePath $updateExe -ArgumentList '--processStart Discord.exe' | Out-Null
+  if (Test-BDAutoAdministrator) {
+    try {
+      $shell = New-Object -ComObject Shell.Application
+      $shell.ShellExecute($updateExe, '--processStart Discord.exe', $TargetProfile.DiscordRoot, 'open', 1)
+      Write-InstallLog 'Discord launch delegated to the interactive Explorer shell to avoid an elevated Discord process.'
+    } catch {
+      Write-InstallLog "Explorer-shell launch failed; using direct launch. $_" 'WARN'
+      Start-Process -FilePath $updateExe -ArgumentList '--processStart Discord.exe' | Out-Null
+    }
+  } else {
+    Start-Process -FilePath $updateExe -ArgumentList '--processStart Discord.exe' | Out-Null
+  }
   $deadline = (Get-Date).AddSeconds(30)
   while ((Get-Date) -lt $deadline) {
     if (Get-Process -Name Discord -ErrorAction SilentlyContinue) {
       Write-InstallLog 'Discord launched successfully.'
-      return
+      return $true
     }
     Start-Sleep -Seconds 2
   }
@@ -266,32 +291,44 @@ function Start-Discord {
 function Install-WatchdogTask {
   if ($SkipTaskInstall) {
     Write-InstallLog 'Scheduled task install skipped.'
-    return
+    $script:InstallStatus.ScheduledTask = 'deferred'
+    return $true
   }
 
   $taskScript = Join-Path $TargetRoot 'BetterDiscordWatchdog\Install-BetterDiscord-WatchdogTask.ps1'
   if (-not (Test-Path -LiteralPath $taskScript)) {
-    throw "Task installer not found: $taskScript"
+    Write-InstallLog "Task installer not found: $taskScript" 'WARN'
+    $script:InstallStatus.ScheduledTask = 'unavailable'
+    return $false
   }
 
   Write-InstallLog 'Installing BetterDiscord watchdog scheduled task.'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskScript `
-    -TargetUserName $TargetProfile.UserName `
-    -TargetUserSid $TargetProfile.UserSid `
-    -TargetRoamingAppData $TargetProfile.RoamingAppData `
-    -TargetLocalAppData $TargetProfile.LocalAppData | Out-Host
-  if ($LASTEXITCODE -ne 0) {
-    throw "Scheduled task installer failed with exit code $LASTEXITCODE"
+  try {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskScript `
+      -TargetUserName $TargetProfile.UserName `
+      -TargetUserSid $TargetProfile.UserSid `
+      -TargetRoamingAppData $TargetProfile.RoamingAppData `
+      -TargetLocalAppData $TargetProfile.LocalAppData | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      throw "Scheduled task installer failed with exit code $LASTEXITCODE"
+    }
+    $script:InstallStatus.ScheduledTask = 'installed'
+    return $true
+  } catch {
+    Write-InstallLog "Scheduled task unavailable; manual repair shortcuts remain available. $_" 'WARN'
+    $script:InstallStatus.ScheduledTask = 'unavailable'
+    return $false
   }
 }
 
 function New-DesktopShortcut {
   if ($SkipShortcuts) {
+    $script:InstallStatus.ManualRepairShortcut = $true
     Write-InstallLog 'Shortcut creation skipped.'
     return
   }
 
-  $shortcutDir = [Environment]::GetFolderPath('Desktop')
+  $shortcutDir = Join-Path $TargetProfile.ProfileRoot 'Desktop'
   if ([string]::IsNullOrWhiteSpace($shortcutDir)) {
     Write-InstallLog 'Desktop path not found; skipping shortcut creation.' 'WARN'
     return
@@ -307,6 +344,7 @@ function New-DesktopShortcut {
   $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,46"
   $shortcut.Description = 'Repair and reopen BetterDiscord'
   $shortcut.Save()
+  $script:InstallStatus.ManualRepairShortcut = $true
   Write-InstallLog "Desktop shortcut created: $shortcutPath"
 }
 
@@ -325,17 +363,80 @@ function Sync-AddonManifest {
     -ManifestPath $manifestPath `
     -ActiveRoot $TargetProfile.BetterDiscordRoot `
     -CacheRoot (Join-Path $TargetRoot 'BetterDiscord') `
-    -Prune | Out-Host
+    -RemoveRecognizedDuplicates | Out-Host
   if ($LASTEXITCODE -ne 0) {
     throw "Addon sync failed with exit code $LASTEXITCODE"
   }
 
-  $pluginCount = (Get-ChildItem -LiteralPath (Join-Path $TargetProfile.BetterDiscordRoot 'plugins') -Filter '*.plugin.js' -File -ErrorAction SilentlyContinue | Measure-Object).Count
-  $themeCount = (Get-ChildItem -LiteralPath (Join-Path $TargetProfile.BetterDiscordRoot 'themes') -Filter '*.theme.css' -File -ErrorAction SilentlyContinue | Measure-Object).Count
-  Write-InstallLog "Active addon verification: plugins=$pluginCount, themes=$themeCount, path=$($TargetProfile.BetterDiscordRoot)"
-  if ($pluginCount -ne 16 -or $themeCount -ne 2) {
-    throw "Active addon verification failed. Expected plugins=16/themes=2; found plugins=$pluginCount/themes=$themeCount."
+  $parsedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $manifest = @()
+  foreach ($entry in $parsedManifest) {
+    if ($entry.enabled) { $manifest += $entry }
   }
+  $pluginCount = @($manifest | Where-Object kind -eq 'plugin' | Where-Object {
+    Test-Path -LiteralPath (Join-Path (Join-Path $TargetProfile.BetterDiscordRoot 'plugins') $_.file_name)
+  }).Count
+  $themeCount = @($manifest | Where-Object kind -eq 'theme' | Where-Object {
+    Test-Path -LiteralPath (Join-Path (Join-Path $TargetProfile.BetterDiscordRoot 'themes') $_.file_name)
+  }).Count
+  $script:InstallStatus.ManagedPlugins = $pluginCount
+  $script:InstallStatus.ManagedThemes = $themeCount
+  Write-InstallLog "Managed addon verification: plugins=$pluginCount, themes=$themeCount, path=$($TargetProfile.BetterDiscordRoot)"
+  if ($pluginCount -ne 16 -or $themeCount -ne 2) {
+    throw "Managed addon verification failed. Expected plugins=16/themes=2; found plugins=$pluginCount/themes=$themeCount."
+  }
+}
+
+function Save-InstallSummary {
+  param($Compatibility)
+
+  $runtimeDir = Join-Path $TargetRoot 'runtime'
+  New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+  $customNote = if ($Compatibility.CustomWindowsSuspected) {
+    'WARNING: Customized or stripped Windows indicators were detected. Core repair is installed; scheduled automation depends on enabled Windows components.'
+  } else {
+    'No strong customized/stripped Windows indicators were detected.'
+  }
+  $taskLine = switch ($InstallStatus.ScheduledTask) {
+    'installed' { 'Scheduled task: installed' }
+    'deferred' { 'Scheduled task: setup handled by the elevated installer stage' }
+    default { 'Scheduled task: unavailable; use the Repair BetterDiscord shortcut after Discord updates' }
+  }
+  $summary = @(
+    "BD-AUTO installation summary",
+    "Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
+    '',
+    "Core installation: $(if ($InstallStatus.CoreInstalled) { 'successful' } else { 'incomplete' })",
+    "BetterDiscord injection: $(if ($InstallStatus.InjectionVerified) { 'verified' } else { 'not verified' })",
+    "Managed plugins: $($InstallStatus.ManagedPlugins)/16",
+    "Managed themes: $($InstallStatus.ManagedThemes)/2",
+    "Discord running after setup: $($InstallStatus.DiscordRelaunched)",
+    $taskLine,
+    "Manual repair shortcut: $(if ($InstallStatus.ManualRepairShortcut -or $SkipShortcuts) { 'installed by setup' } else { 'not created' })",
+    '',
+    "Windows: $($Compatibility.WindowsCaption) $($Compatibility.WindowsDisplayVersion) build $($Compatibility.WindowsBuild)",
+    "PowerShell: $($Compatibility.PowerShellVersion)",
+    "Target user: $($TargetProfile.UserName)",
+    "Discord: $($TargetProfile.DiscordRoot)",
+    "BetterDiscord: $($TargetProfile.BetterDiscordRoot)",
+    "Bundled bdcli: $($Compatibility.BundledBdcliPresent)",
+    "winget required: False (detected: $($Compatibility.WingetPresent))",
+    "Task Scheduler available: $($Compatibility.TaskSchedulerAvailable)",
+    $customNote,
+    '',
+    "Logs: $TargetRoot\logs and $TargetRoot\runtime\logs",
+    'Manual fallback: run the Repair BetterDiscord desktop or Start Menu shortcut.'
+  ) -join [Environment]::NewLine
+  [System.IO.File]::WriteAllText(
+    (Join-Path $runtimeDir 'install-summary.txt'),
+    $summary + [Environment]::NewLine,
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+  [System.IO.File]::WriteAllText(
+    (Join-Path $runtimeDir 'install-result.json'),
+    ($InstallStatus | ConvertTo-Json -Depth 4),
+    (New-Object System.Text.UTF8Encoding($false))
+  )
 }
 
 function Save-TargetProfileState {
@@ -366,7 +467,7 @@ $TargetProfile = Resolve-BDAutoTargetProfile `
   -TargetRoamingAppData $TargetRoamingAppData `
   -TargetLocalAppData $TargetLocalAppData
 
-if (-not $DryRun -and -not $SkipTaskInstall -and -not (Test-RunningAsAdmin)) {
+if (-not $DryRun -and -not $SkipTaskInstall -and -not (Test-BDAutoAdministrator)) {
   Invoke-SelfElevate -ResolvedProfile $TargetProfile
 }
 
@@ -375,16 +476,37 @@ Write-InstallLog "Starting BD-AUTO install from $SourceRoot to $TargetRoot"
 Write-BDAutoTargetProfileLog -Profile $TargetProfile -WriteLog ${function:Write-InstallLog}
 
 if (-not $DryRun) {
-  Copy-Bundle -SourceRoot $SourceRoot -DestinationRoot $TargetRoot
-  New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot 'logs'), (Join-Path $TargetRoot 'runtime'), (Join-Path $TargetRoot 'bin') | Out-Null
-  Ensure-BdcliBinary
-  Install-BetterDiscord
-  Sync-AddonManifest
-  Save-TargetProfileState
-  Install-WatchdogTask
-  New-DesktopShortcut
-  Start-Discord
-  Write-InstallLog 'Install completed successfully.'
+  $Compatibility = $null
+  try {
+    Copy-Bundle -SourceRoot $SourceRoot -DestinationRoot $TargetRoot
+    New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot 'logs'), (Join-Path $TargetRoot 'runtime'), (Join-Path $TargetRoot 'bin') | Out-Null
+    $Compatibility = Get-BDAutoCompatibilityReport -TargetProfile $TargetProfile -RootPath $TargetRoot
+    Write-BDAutoCompatibilityLog -Report $Compatibility -WriteLog ${function:Write-InstallLog}
+    Save-BDAutoCompatibilityReport -Report $Compatibility -Path (Join-Path $TargetRoot 'runtime\compatibility.json')
+    Ensure-BdcliBinary
+    Install-BetterDiscord
+    Sync-AddonManifest
+    Save-TargetProfileState
+    [void](Install-WatchdogTask)
+    New-DesktopShortcut
+    $InstallStatus.DiscordRelaunched = [bool](Start-Discord)
+    $InstallStatus.CoreInstalled = $true
+    Save-InstallSummary -Compatibility $Compatibility
+    Write-InstallLog 'Install completed successfully.'
+  } catch {
+    Write-InstallLog "Install failed: $_" 'ERROR'
+    if (-not $NoLaunchDiscord) {
+      try {
+        $InstallStatus.DiscordRelaunched = [bool](Start-Discord)
+      } catch {
+        Write-InstallLog "Discord recovery launch failed: $_" 'ERROR'
+      }
+    }
+    if ($Compatibility) { Save-InstallSummary -Compatibility $Compatibility }
+    throw
+  }
 } else {
+  $Compatibility = Get-BDAutoCompatibilityReport -TargetProfile $TargetProfile -RootPath $SourceRoot
+  Write-BDAutoCompatibilityLog -Report $Compatibility -WriteLog ${function:Write-InstallLog}
   Write-InstallLog 'DryRun enabled: bundle copy, CLI download, BetterDiscord install, addon sync, task install, shortcut creation, and Discord launch were skipped.'
 }

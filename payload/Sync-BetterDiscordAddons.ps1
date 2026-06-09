@@ -4,10 +4,12 @@ param(
   [string]$ActiveRoot = (Join-Path $env:APPDATA 'BetterDiscord'),
   [string]$CacheRoot = (Join-Path $PSScriptRoot 'BetterDiscord'),
   [switch]$Prune,
+  [switch]$RemoveRecognizedDuplicates,
   [switch]$VerifyOnly
 )
 
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Write-SyncLog {
   param([string]$Message, [string]$Level = 'INFO')
@@ -80,7 +82,9 @@ if (-not (Test-Path -LiteralPath $ManifestPath)) {
   throw "Addon manifest not found: $ManifestPath"
 }
 
-$manifest = @(Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json)
+$parsedManifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+$manifest = @()
+foreach ($entry in $parsedManifest) { $manifest += $entry }
 if ($manifest.Count -eq 0) { throw 'Addon manifest is empty.' }
 
 $duplicateFiles = $manifest | Group-Object kind, file_name | Where-Object Count -gt 1
@@ -97,7 +101,10 @@ if (-not $VerifyOnly) {
   }
 }
 
-$enabled = @($manifest | Where-Object enabled)
+$enabled = @()
+foreach ($entry in $manifest) {
+  if ($entry.enabled) { $enabled += $entry }
+}
 $pluginFiles = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
 $themeFiles = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
 $pluginState = @{}
@@ -169,6 +176,36 @@ foreach ($addon in $enabled) {
     $copyCount++
   } else {
     $keepCount++
+  }
+}
+
+if ($RemoveRecognizedDuplicates) {
+  foreach ($root in $roots) {
+    foreach ($kind in @('plugin', 'theme')) {
+      $relativeDir = if ($kind -eq 'plugin') { 'plugins' } else { 'themes' }
+      $filter = if ($kind -eq 'plugin') { '*.plugin.js' } else { '*.theme.css' }
+      $directory = Join-Path $root $relativeDir
+      if (-not (Test-Path -LiteralPath $directory)) { continue }
+
+      $kindManifest = @($enabled | Where-Object kind -eq $kind)
+      foreach ($addon in $kindManifest) {
+        $canonicalPath = Join-Path $directory $addon.file_name
+        $duplicates = @(Get-ChildItem -LiteralPath $directory -File -Filter $filter -ErrorAction SilentlyContinue |
+          Where-Object { $_.FullName -ine $canonicalPath } |
+          Where-Object {
+            $metadata = Get-AddonMetadata -Path $_.FullName
+            $metadata -and $metadata.Name -ieq $addon.name
+          })
+        foreach ($duplicate in $duplicates) {
+          if ($VerifyOnly) {
+            $problems.Add("Recognized duplicate addon: $($duplicate.FullName)")
+          } else {
+            Write-SyncLog "Removing recognized duplicate $($duplicate.Name); canonical file is $($addon.file_name)"
+            Remove-Item -LiteralPath $duplicate.FullName -Force
+          }
+        }
+      }
+    }
   }
 }
 

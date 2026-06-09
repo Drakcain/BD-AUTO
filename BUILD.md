@@ -13,6 +13,8 @@ Install Inno Setup with:
 winget install --id JRSoftware.InnoSetup -e
 ```
 
+winget is only a convenience for developers installing Inno Setup. The produced BD-AUTO installer does not require winget.
+
 ## Validate
 
 From the repository root:
@@ -32,11 +34,14 @@ The validation checks:
 - absence of logs, state, backups, secrets, and bundled executables
 - required installer files
 - scheduled-task trigger configuration
+- bundled checksum-verified BetterDiscord CLI staging
+- customized/stripped Windows compatibility reporting
+- graceful manual fallback when Task Scheduler is unavailable
 
 ## Compile
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1 -Version 1.0.0
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1 -Version 1.0.5
 ```
 
 Expected output:
@@ -45,7 +50,7 @@ Expected output:
 dist\BD-AUTO-Setup.exe
 ```
 
-The build script validates the repository before compiling.
+The build script validates the repository, downloads the latest official BetterDiscord CLI archive, verifies it against BetterDiscord's published checksum file, stages it under ignored `build\`, and embeds it in the installer. The executable is never committed to source.
 
 ## Test Locally
 
@@ -53,7 +58,7 @@ The build script validates the repository before compiling.
 2. Run `dist\BD-AUTO-Setup.exe`.
 3. Confirm BetterDiscord appears in Discord settings.
 4. Confirm 16 plugins and 2 themes are present.
-5. Confirm Task Scheduler contains `BetterDiscord Auto Repair Watchdog`.
+5. Confirm Task Scheduler contains `BetterDiscord Auto Repair Watchdog`, or confirm `runtime\task-status.json` reports a graceful manual-only fallback.
 6. Confirm the task has only logon and event triggers, with no recurring time trigger.
 7. Simulate a repair using the **Repair BetterDiscord** shortcut.
 8. Confirm setup displays `INSTALL-NOTICE.txt` and installs `THIRD-PARTY-NOTICES.md`.
@@ -61,14 +66,16 @@ The build script validates the repository before compiling.
 10. Confirm `runtime\target-profile.json` identifies the user that runs Discord.
 11. Confirm the task principal and action arguments target that same user and AppData.
 12. Uninstall BD-AUTO and verify the task is removed.
+13. Confirm `runtime\compatibility.json` and `runtime\install-summary.txt` accurately describe the machine.
+14. Confirm the installer still succeeds when winget is unavailable.
 
 ## GitHub Release
 
 Pushing a tag matching `v*` runs `.github/workflows/build.yml`, builds the EXE, and creates a GitHub Release:
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.5
+git push origin v1.0.5
 ```
 
 ## Do Not Commit

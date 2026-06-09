@@ -21,16 +21,19 @@ $requiredFiles = @(
   'LICENSE',
   'INSTALL-NOTICE.txt',
   'THIRD-PARTY-NOTICES.md',
+  'SIGNING.md',
   'SECURITY.md',
   '.gitignore',
   'installer\BD-AUTO.iss',
   'payload\Install-BD-AUTO.ps1',
+  'payload\Get-BDAutoCompatibility.ps1',
   'payload\Resolve-BDAutoTargetProfile.ps1',
   'payload\Sync-BetterDiscordAddons.ps1',
   'payload\addons.manifest.json',
   'payload\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1',
   'payload\BetterDiscordWatchdog\Install-BetterDiscord-WatchdogTask.ps1',
-  'payload\BetterDiscordWatchdog\Remove-BetterDiscord-WatchdogTask.ps1'
+  'payload\BetterDiscordWatchdog\Remove-BetterDiscord-WatchdogTask.ps1',
+  'scripts\Test-Compatibility.ps1'
 )
 foreach ($file in $requiredFiles) {
   Test-Condition -Name "Required $file" -Passed (Test-Path -LiteralPath (Join-Path $RepoRoot $file)) -Detail 'present'
@@ -66,8 +69,12 @@ Test-Condition -Name 'License scope clarification' -Passed ($thirdPartyNotice -m
 Test-Condition -Name 'Discord terms disclosure' -Passed ($thirdPartyNotice -match 'Discord''s Terms of Service' -and $thirdPartyNotice -match 'may violate') -Detail 'risk disclosed'
 
 $installerScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'installer\BD-AUTO.iss') -Raw
+$buildScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts\Build.ps1') -Raw
+$signingDoc = Get-Content -LiteralPath (Join-Path $RepoRoot 'SIGNING.md') -Raw
 Test-Condition -Name 'Installer notice page' -Passed ($installerScript -match 'InfoBeforeFile=\.\.\\INSTALL-NOTICE\.txt') -Detail 'configured'
 Test-Condition -Name 'Installed legal files' -Passed ($installerScript -match 'THIRD-PARTY-NOTICES\.md' -and $installerScript -match '\.\.\\LICENSE') -Detail 'license and notices included'
+Test-Condition -Name 'Automatic UAC request' -Passed ($installerScript -match 'PrivilegesRequired=admin') -Detail 'configured'
+Test-Condition -Name 'Signing guidance' -Passed ($signingDoc -match 'does not remove the Windows User Account Control prompt' -and $signingDoc -match 'Never commit certificate files, private keys') -Detail 'UAC and secret handling documented'
 
 $forbiddenNames = @('state.json')
 $forbiddenDirectories = @('logs', 'backups', 'bin', 'BetterDiscord')
@@ -85,6 +92,8 @@ $taskScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\BetterDisco
 $watchdogScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1') -Raw
 $installScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\Install-BD-AUTO.ps1') -Raw
 $profileResolver = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\Resolve-BDAutoTargetProfile.ps1') -Raw
+$compatibilityScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\Get-BDAutoCompatibility.ps1') -Raw
+$syncScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'payload\Sync-BetterDiscordAddons.ps1') -Raw
 Test-Condition -Name 'Logon trigger' -Passed ($taskScript -match '<LogonTrigger>') -Detail 'configured'
 Test-Condition -Name 'Wake event trigger' -Passed ($taskScript -match 'Power-Troubleshooter' -and $taskScript -match 'EventID=1') -Detail 'configured'
 Test-Condition -Name 'No recurring timer' -Passed ($taskScript -notmatch 'RepetitionInterval|MSFT_TaskTimeTrigger|<TimeTrigger>') -Detail 'none'
@@ -97,6 +106,16 @@ Test-Condition -Name 'Path-bound CLI install' -Passed ($installScript -match 'in
 Test-Condition -Name 'Saved target state' -Passed ($installScript -match 'target-profile\.json' -and $watchdogScript -match 'target-profile\.json' -and $taskScript -match 'target-profile\.json') -Detail 'shared profile state configured'
 Test-Condition -Name 'Original-user setup' -Passed ($installerScript -match 'ExecAsOriginalUser' -and $installerScript -match '-SkipTaskInstall') -Detail 'per-user work avoids elevated AppData'
 Test-Condition -Name 'Target-bound task action' -Passed ($taskScript -match '-TargetUserName' -and $taskScript -match '-TargetLocalAppData') -Detail 'scheduled repair remains on Discord user profile'
+Test-Condition -Name 'Bundled CLI staging' -Passed ($buildScript -match 'Add-VerifiedBdcliToPayload' -and $buildScript -match 'bdcli_checksums\.txt' -and $buildScript -match 'MyPayloadDir') -Detail 'verified CLI embedded at build time'
+Test-Condition -Name 'winget optional at runtime' -Passed ($installScript -notmatch 'winget install' -and $compatibilityScript -match 'WingetPresent') -Detail 'detected but never required'
+Test-Condition -Name 'Compatibility preflight' -Passed ($compatibilityScript -match 'CustomWindowsSuspected' -and $compatibilityScript -match 'TaskSchedulerAvailable' -and $installScript -match 'compatibility\.json' -and $watchdogScript -match 'compatibility\.json') -Detail 'stock and reduced-component Windows reported'
+Test-Condition -Name 'Graceful task fallback' -Passed ($taskScript -match 'installed-logon-only' -and $taskScript -match 'task-status\.json' -and $installerScript -match 'Scheduled repair automation could not be installed') -Detail 'task failure does not abort core setup'
+Test-Condition -Name 'Always-present repair shortcuts' -Passed ($installerScript -match '\{autodesktop\}\\Repair BetterDiscord' -and $installerScript -match '\{group\}\\Repair BetterDiscord' -and $installerScript -match '-RestoreStash') -Detail 'desktop and Start Menu fallback configured'
+Test-Condition -Name 'Installer summary' -Passed ($installScript -match 'install-summary\.txt' -and $installerScript -match 'Installation Summary') -Detail 'machine-readable and user-facing results configured'
+Test-Condition -Name 'Safe duplicate cleanup' -Passed ($installScript -match 'RemoveRecognizedDuplicates' -and $watchdogScript -match 'RemoveRecognizedDuplicates') -Detail 'recognized duplicates removed without pruning unrelated addons'
+Test-Condition -Name 'PowerShell 5.1 manifest enumeration' -Passed ($syncScript -match 'foreach \(\$entry in \$parsedManifest\)' -and $installScript -match 'foreach \(\$entry in \$parsedManifest\)') -Detail 'JSON arrays explicitly enumerated'
+Test-Condition -Name 'Non-elevated Discord relaunch' -Passed ($installScript -match 'Shell\.Application' -and $watchdogScript -match 'Shell\.Application') -Detail 'elevated repair delegates launch to Explorer'
+Test-Condition -Name 'No hidden UAC prompt' -Passed ($taskScript -match '-NoElevationPrompt' -and $watchdogScript -match 'repair-requires-elevation') -Detail 'scheduled checks defer elevation to manual shortcut'
 
 $suspiciousPatterns = '(?i)(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|discord[_-]?token\s*[:=])'
 $repositoryFiles = Get-ChildItem -LiteralPath $RepoRoot -File -Recurse |
@@ -111,6 +130,9 @@ $forbiddenTracked = @($trackedFiles | Where-Object {
   $_ -match '\.(exe|dll|zip|7z|rar|log)$'
 })
 Test-Condition -Name 'Clean tracked files' -Passed ($forbiddenTracked.Count -eq 0) -Detail "$($forbiddenTracked.Count) forbidden tracked file(s)"
+
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\Test-Compatibility.ps1')
+Test-Condition -Name 'Reduced Windows simulation' -Passed ($LASTEXITCODE -eq 0) -Detail 'custom branding and stripped components degrade safely'
 
 if ($failures.Count -gt 0) {
   Write-Host "`nRepository validation failed:"

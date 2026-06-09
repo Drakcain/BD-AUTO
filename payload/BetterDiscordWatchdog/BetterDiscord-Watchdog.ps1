@@ -5,6 +5,8 @@ param(
   [switch]$ReopenDiscord,
   [switch]$NoReopenDiscord,
   [switch]$RestoreStash,
+  [switch]$NoElevationPrompt,
+  [switch]$ElevatedRepair,
   [switch]$WaitForDiscord,
   [int]$StartupDelaySeconds = 0,
   [int]$DiscordWaitTimeoutSeconds = 300,
@@ -21,10 +23,15 @@ $ErrorActionPreference = 'Stop'
 $BaseDir = $PSScriptRoot
 $RootDir = Split-Path -Parent $BaseDir
 $ProfileResolverPath = Join-Path $RootDir 'Resolve-BDAutoTargetProfile.ps1'
+$CompatibilityPath = Join-Path $RootDir 'Get-BDAutoCompatibility.ps1'
 if (-not (Test-Path -LiteralPath $ProfileResolverPath)) {
   throw "Target profile resolver not found: $ProfileResolverPath"
 }
+if (-not (Test-Path -LiteralPath $CompatibilityPath)) {
+  throw "Compatibility helper not found: $CompatibilityPath"
+}
 . $ProfileResolverPath
+. $CompatibilityPath
 $SavedProfilePath = Join-Path $RootDir 'runtime\target-profile.json'
 if (
   (Test-Path -LiteralPath $SavedProfilePath) -and
@@ -203,6 +210,7 @@ function Update-BdcliForRepair {
   $checksumPath = "$tempRoot-checksums.txt"
 
   try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $headers = @{ 'User-Agent' = 'BD-AUTO Watchdog' }
     Write-Log 'Refreshing the official BetterDiscord CLI before repair.'
     $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/BetterDiscord/cli/releases/latest' -Headers $headers
@@ -255,7 +263,7 @@ function Update-BdcliForRepair {
 }
 
 function Stop-Discord {
-  param([int]$TimeoutSeconds = 15)
+  param([int]$GracefulTimeoutSeconds = 3, [int]$ForceAttempts = 5)
 
   $processes = @(Get-DiscordProcesses | Sort-Object Id -Unique)
   if ($processes.Count -eq 0) { return @() }
@@ -264,17 +272,31 @@ function Stop-Discord {
     try { [void]$process.CloseMainWindow() } catch { }
   }
 
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $deadline = (Get-Date).AddSeconds($GracefulTimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
-    $remaining = @($processes | Where-Object { Get-Process -Id $_.Id -ErrorAction SilentlyContinue })
+    $remaining = @(Get-DiscordProcesses)
     if ($remaining.Count -eq 0) { return $processes }
     Start-Sleep -Milliseconds 500
   }
 
-  foreach ($process in $processes) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+  for ($attempt = 1; $attempt -le $ForceAttempts; $attempt++) {
+    $remaining = @(Get-DiscordProcesses | Sort-Object Id -Unique)
+    if ($remaining.Count -eq 0) { return $processes }
+
+    foreach ($process in $remaining) {
+      try {
+        Stop-Process -Id $process.Id -Force -ErrorAction Stop
+      } catch {
+        try { & taskkill.exe /PID $process.Id /T /F 2>&1 | Out-Null } catch { }
+      }
+    }
+    Start-Sleep -Seconds 1
   }
-  Start-Sleep -Seconds 1
+
+  $remaining = @(Get-DiscordProcesses)
+  if ($remaining.Count -gt 0) {
+    throw "Could not stop all target Discord processes: $($remaining.Id -join ', ')"
+  }
   return $processes
 }
 
@@ -290,7 +312,18 @@ function Start-Discord {
     return $false
   }
 
-  Start-Process -FilePath $updateExe -ArgumentList '--processStart Discord.exe' | Out-Null
+  if (Test-BDAutoAdministrator) {
+    try {
+      $shell = New-Object -ComObject Shell.Application
+      $shell.ShellExecute($updateExe, '--processStart Discord.exe', $DiscordRoot, 'open', 1)
+      Write-Log 'Discord relaunch delegated to the interactive Explorer shell to avoid an elevated Discord process.'
+    } catch {
+      Write-Log "Explorer-shell launch failed; using direct launch. $_" 'WARN'
+      Start-Process -FilePath $updateExe -ArgumentList '--processStart Discord.exe' | Out-Null
+    }
+  } else {
+    Start-Process -FilePath $updateExe -ArgumentList '--processStart Discord.exe' | Out-Null
+  }
   $deadline = (Get-Date).AddSeconds(30)
   while ((Get-Date) -lt $deadline) {
     if (Get-DiscordProcesses) {
@@ -313,7 +346,7 @@ function Invoke-AddonSync {
     '-ManifestPath', $ManifestPath,
     '-ActiveRoot', $ActiveBDRoot,
     '-CacheRoot', $AddonCacheRoot,
-    '-Prune'
+    '-RemoveRecognizedDuplicates'
   )
   if ($Verify) { $arguments += '-VerifyOnly' }
   & powershell.exe @arguments | ForEach-Object { Write-Log "$_" }
@@ -361,7 +394,22 @@ function Remove-OldBackups {
 function Repair-WatchdogTaskDefinition {
   $taskName = 'BetterDiscord Auto Repair Watchdog'
   $taskInstaller = Join-Path $BaseDir 'Install-BetterDiscord-WatchdogTask.ps1'
-  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  $scheduleService = Get-Service -Name 'Schedule' -ErrorAction SilentlyContinue
+  if (
+    -not $scheduleService -or
+    $scheduleService.StartType -eq 'Disabled' -or
+    -not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)
+  ) {
+    Write-Log 'Scheduled task infrastructure is unavailable; manual repair remains available.' 'WARN'
+    return
+  }
+
+  try {
+    $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  } catch {
+    Write-Log "Scheduled task inspection failed; manual repair remains available. $_" 'WARN'
+    return
+  }
   if (-not $task) { return }
 
   $arguments = [string]$task.Actions[0].Arguments
@@ -371,6 +419,7 @@ function Repair-WatchdogTaskDefinition {
   $hasTimeTrigger = $triggerClasses -contains 'MSFT_TaskTimeTrigger'
   $definitionCurrent = (
     $arguments -match '-WaitForDiscord' -and
+    $arguments -match '-NoElevationPrompt' -and
     $arguments -match '-DiscordWaitTimeoutSeconds 300' -and
     $arguments -match '-TargetRoamingAppData' -and
     $arguments -match [regex]::Escape($TargetProfile.RoamingAppData) -and
@@ -388,19 +437,65 @@ function Repair-WatchdogTaskDefinition {
     return
   }
 
-  Write-Log 'Updating stale scheduled task definition.'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskInstaller `
-    -TargetUserName $TargetProfile.UserName `
-    -TargetUserSid $TargetProfile.UserSid `
-    -TargetRoamingAppData $TargetProfile.RoamingAppData `
-    -TargetLocalAppData $TargetProfile.LocalAppData | ForEach-Object { Write-Log "$_" }
-  if ($LASTEXITCODE -ne 0) {
-    Write-Log "Scheduled task update failed with exit code $LASTEXITCODE." 'ERROR'
+  try {
+    Write-Log 'Updating stale scheduled task definition.'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $taskInstaller `
+      -TargetUserName $TargetProfile.UserName `
+      -TargetUserSid $TargetProfile.UserSid `
+      -TargetRoamingAppData $TargetProfile.RoamingAppData `
+      -TargetLocalAppData $TargetProfile.LocalAppData | ForEach-Object { Write-Log "$_" }
+    if ($LASTEXITCODE -ne 0) {
+      Write-Log "Scheduled task update failed with exit code $LASTEXITCODE; manual repair remains available." 'WARN'
+    }
+  } catch {
+    Write-Log "Scheduled task update failed; manual repair remains available. $_" 'WARN'
   }
+}
+
+function Invoke-ElevatedRepair {
+  $powerShell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+  $arguments = @(
+    '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+    '-File', $PSCommandPath,
+    '-ElevatedRepair',
+    '-TargetUserName', $TargetProfile.UserName,
+    '-TargetRoamingAppData', $TargetProfile.RoamingAppData,
+    '-TargetLocalAppData', $TargetProfile.LocalAppData,
+    '-BackupRetentionCount', $BackupRetentionCount
+  )
+  if ($ForceRepair) { $arguments += '-ForceRepair' }
+  if ($ReopenDiscord) { $arguments += '-ReopenDiscord' }
+  if ($NoReopenDiscord) { $arguments += '-NoReopenDiscord' }
+  if ($RestoreStash) { $arguments += '-RestoreStash' }
+  $argumentLine = ($arguments | ForEach-Object {
+    $value = [string]$_
+    if ($value -match '[\s"]') {
+      '"' + ($value -replace '(\\*)"', '$1$1\"' -replace '(\\+)$', '$1$1') + '"'
+    } else {
+      $value
+    }
+  }) -join ' '
+
+  Write-Log 'Repair requires elevation. Requesting Windows UAC approval.'
+  try {
+    $process = Start-Process -FilePath $powerShell -Verb RunAs -ArgumentList $argumentLine -PassThru
+  } catch {
+    throw "Repair elevation was cancelled or unavailable. $_"
+  }
+  if (-not $process.WaitForExit(600000)) {
+    throw 'Elevated repair did not finish within 10 minutes.'
+  }
+  if ($process.ExitCode -ne 0) {
+    throw "Elevated repair failed with exit code $($process.ExitCode)."
+  }
+  exit 0
 }
 
 $state = Load-State
 Write-BDAutoTargetProfileLog -Profile $TargetProfile -WriteLog ${function:Write-Log}
+$compatibility = Get-BDAutoCompatibilityReport -TargetProfile $TargetProfile -RootPath $RootDir
+Write-BDAutoCompatibilityLog -Report $compatibility -WriteLog ${function:Write-Log}
+Save-BDAutoCompatibilityReport -Report $compatibility -Path (Join-Path $RuntimeRoot 'compatibility.json')
 Repair-WatchdogTaskDefinition
 if ($StartupDelaySeconds -gt 0) {
   Write-Log "Startup delay: $StartupDelaySeconds second(s)."
@@ -463,6 +558,16 @@ if ($DryRun) {
   Save-State $state
   Write-Log 'Dry run complete; no changes were made.'
   exit 0
+}
+
+if (-not (Test-BDAutoAdministrator) -and -not $ElevatedRepair) {
+  if ($NoElevationPrompt) {
+    $state.last_check_result = 'repair-requires-elevation'
+    Save-State $state
+    Write-Log 'Repair requires administrator approval. Hidden automation will not display UAC; use the Repair BetterDiscord shortcut.' 'WARN'
+    exit 2
+  }
+  Invoke-ElevatedRepair
 }
 
 if ($addonVerificationFailed) {

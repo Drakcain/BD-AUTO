@@ -11,6 +11,76 @@ $ErrorActionPreference = 'Stop'
 
 $taskName = 'BetterDiscord Auto Repair Watchdog'
 $scriptPath = 'C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1'
+$taskStatusPath = Join-Path (Split-Path -Parent $ProfileStatePath) 'task-status.json'
+
+function Write-TaskStatus {
+  param(
+    [string]$Status,
+    [string]$Message,
+    [bool]$WakeTriggerInstalled = $false
+  )
+
+  $directory = Split-Path -Parent $taskStatusPath
+  New-Item -ItemType Directory -Force -Path $directory | Out-Null
+  $value = [ordered]@{
+    status = $Status
+    message = $Message
+    task_name = $taskName
+    target_user = $TargetUserName
+    target_user_sid = $TargetUserSid
+    wake_trigger_installed = $WakeTriggerInstalled
+    manual_repair_available = Test-Path -LiteralPath $scriptPath
+    updated_at = (Get-Date).ToString('o')
+  }
+  [System.IO.File]::WriteAllText(
+    $taskStatusPath,
+    ($value | ConvertTo-Json -Depth 4),
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+}
+
+function Update-InstallSummaryTaskStatus {
+  param(
+    [string]$Status,
+    [string]$Message
+  )
+
+  $runtimeRoot = Split-Path -Parent $ProfileStatePath
+  $resultPath = Join-Path $runtimeRoot 'install-result.json'
+  if (Test-Path -LiteralPath $resultPath) {
+    try {
+      $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+      $result.ScheduledTask = $Status
+      [System.IO.File]::WriteAllText(
+        $resultPath,
+        ($result | ConvertTo-Json -Depth 4),
+        (New-Object System.Text.UTF8Encoding($false))
+      )
+    } catch { }
+  }
+
+  $summaryPath = Join-Path $runtimeRoot 'install-summary.txt'
+  if (Test-Path -LiteralPath $summaryPath) {
+    try {
+      $summary = Get-Content -LiteralPath $summaryPath -Raw
+      $summary = $summary -replace '(?m)^Scheduled task:.*$', "Scheduled task: $Message"
+      [System.IO.File]::WriteAllText(
+        $summaryPath,
+        $summary,
+        (New-Object System.Text.UTF8Encoding($false))
+      )
+    } catch { }
+  }
+}
+
+trap {
+  $message = "Scheduled task setup failed: $($_.Exception.Message)"
+  try { Write-TaskStatus -Status 'unavailable' -Message $message } catch { }
+  try { Update-InstallSummaryTaskStatus -Status 'unavailable' -Message 'unavailable; use the Repair BetterDiscord shortcut after Discord updates' } catch { }
+  [Console]::Error.WriteLine($message)
+  exit 2
+}
+
 if (-not (Test-Path -LiteralPath $scriptPath)) {
   throw "Watchdog script not found: $scriptPath"
 }
@@ -43,6 +113,19 @@ if ($TargetUserSid) { $targetProfile.UserSid = $TargetUserSid }
 if (-not $targetProfile.UserSid) {
   throw "Could not resolve a SID for target user '$($targetProfile.UserName)'."
 }
+$TargetUserName = $targetProfile.UserName
+$TargetUserSid = $targetProfile.UserSid
+
+$scheduleService = Get-Service -Name 'Schedule' -ErrorAction SilentlyContinue
+if (-not $scheduleService) {
+  throw 'Task Scheduler service is unavailable on this Windows installation.'
+}
+if ($scheduleService.StartType -eq 'Disabled') {
+  throw 'Task Scheduler service is disabled on this Windows installation.'
+}
+if (-not (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue)) {
+  throw 'The ScheduledTasks PowerShell module is unavailable.'
+}
 
 $userSid = $targetProfile.UserSid
 $userName = $targetProfile.UserName
@@ -52,7 +135,7 @@ $escapedAuthor = [Security.SecurityElement]::Escape($userName)
 $watchdogArguments = (
   '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass ' +
   "-File `"$scriptPath`" -WaitForDiscord " +
-  '-DiscordWaitTimeoutSeconds 300 -DiscordStabilizeSeconds 10 -DiscordStabilizePollSeconds 2 ' +
+  '-NoElevationPrompt -DiscordWaitTimeoutSeconds 300 -DiscordStabilizeSeconds 10 -DiscordStabilizePollSeconds 2 ' +
   "-TargetUserName `"$($targetProfile.UserName)`" " +
   "-TargetRoamingAppData `"$($targetProfile.RoamingAppData)`" " +
   "-TargetLocalAppData `"$($targetProfile.LocalAppData)`""
@@ -124,9 +207,37 @@ $taskXml = @"
 </Task>
 "@
 
-Register-ScheduledTask -TaskName $taskName -Xml $taskXml -Force | Out-Null
+$wakeTriggerInstalled = $true
+try {
+  Register-ScheduledTask -TaskName $taskName -Xml $taskXml -Force | Out-Null
+} catch {
+  Write-Warning "Wake-event task registration failed; retrying with the sign-in trigger only. $_"
+  $logonOnlyXml = $taskXml -replace '(?s)\s*<EventTrigger>.*?</EventTrigger>', ''
+  Register-ScheduledTask -TaskName $taskName -Xml $logonOnlyXml -Force | Out-Null
+  $wakeTriggerInstalled = $false
+}
+$installedTask = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+if (-not $installedTask) { throw 'Task registration returned without an installed task.' }
+Write-TaskStatus -Status $(if ($wakeTriggerInstalled) { 'installed' } else { 'installed-logon-only' }) `
+  -Message $(if ($wakeTriggerInstalled) {
+    'Scheduled repair installed for sign-in and resume from sleep.'
+  } else {
+    'Scheduled repair installed for sign-in only; the wake event trigger is unavailable.'
+  }) `
+  -WakeTriggerInstalled $wakeTriggerInstalled
+Update-InstallSummaryTaskStatus `
+  -Status $(if ($wakeTriggerInstalled) { 'installed' } else { 'installed-logon-only' }) `
+  -Message $(if ($wakeTriggerInstalled) {
+    'installed for sign-in and resume from sleep'
+  } else {
+    'installed for sign-in only; wake-event support is unavailable'
+  })
 Write-Host "Installed scheduled task: $taskName"
 Write-Host "Target user: $($targetProfile.UserName) [$($targetProfile.UserSid)]"
 Write-Host "Target BetterDiscord: $($targetProfile.BetterDiscordRoot)"
 Write-Host "Target Discord: $($targetProfile.DiscordRoot)"
-Write-Host 'Triggers: user logon and resume from sleep. No recurring timer.'
+Write-Host $(if ($wakeTriggerInstalled) {
+  'Triggers: user logon and resume from sleep. No recurring timer.'
+} else {
+  'Triggers: user logon only. Wake-event support is unavailable; no recurring timer.'
+})
