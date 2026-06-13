@@ -1,13 +1,21 @@
 [CmdletBinding()]
 param(
   [ValidatePattern('^\d+\.\d+\.\d+([.-][A-Za-z0-9.-]+)?$')]
-  [string]$Version = '1.0.0'
+  [string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = Join-Path $RepoRoot 'build'
 $stagedPayload = Join-Path $buildRoot 'payload'
+$versionFile = Join-Path $RepoRoot 'VERSION'
+
+if (-not $Version) {
+  if (-not (Test-Path -LiteralPath $versionFile)) {
+    throw "VERSION file was not found: $versionFile"
+  }
+  $Version = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+}
 
 function Add-VerifiedBdcliToPayload {
   param([Parameter(Mandatory = $true)][string]$PayloadRoot)

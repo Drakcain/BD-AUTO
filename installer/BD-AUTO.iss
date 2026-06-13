@@ -40,6 +40,7 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\INSTALL-NOTICE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\SIGNING.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 Name: "{app}\bin"; Permissions: users-modify
@@ -51,6 +52,7 @@ Name: "{app}\runtime"; Permissions: users-modify
 Name: "{autodesktop}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -RestoreStash -ReopenDiscord"; WorkingDir: "{app}"
 Name: "{group}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -RestoreStash -ReopenDiscord"; WorkingDir: "{app}"
 Name: "{group}\BD-AUTO Logs"; Filename: "{app}\runtime\logs"
+Name: "{group}\View BD-AUTO Status"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\BD-AUTO-STATUS.txt"""; WorkingDir: "{app}"
 Name: "{group}\Installation Summary"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\runtime\install-summary.txt"""; WorkingDir: "{app}"
 Name: "{group}\Uninstall BD-AUTO"; Filename: "{uninstallexe}"
 Name: "{group}\BD-AUTO on GitHub"; Filename: "{#MyAppURL}"

@@ -16,6 +16,11 @@ $ErrorActionPreference = 'Stop'
 $InvocationParameters = @{} + $PSBoundParameters
 $SourceRoot = Split-Path -Parent $PSCommandPath
 $TargetRoot = 'C:\Tools\BD-AUTO'
+$VersionPath = Join-Path $SourceRoot 'VERSION'
+$PackageVersion = if (Test-Path -LiteralPath $VersionPath) { (Get-Content -LiteralPath $VersionPath -Raw).Trim() } else { '0.0.0' }
+$ReleaseUrl = "https://github.com/Drakcain/BD-AUTO/releases/tag/v$PackageVersion"
+$LatestReleaseUrl = 'https://github.com/Drakcain/BD-AUTO/releases/latest'
+$RepoUrl = 'https://github.com/Drakcain/BD-AUTO'
 $ProfileResolverPath = Join-Path $SourceRoot 'Resolve-BDAutoTargetProfile.ps1'
 $CompatibilityPath = Join-Path $SourceRoot 'Get-BDAutoCompatibility.ps1'
 if (-not (Test-Path -LiteralPath $ProfileResolverPath)) {
@@ -27,6 +32,8 @@ if (-not (Test-Path -LiteralPath $CompatibilityPath)) {
 . $ProfileResolverPath
 . $CompatibilityPath
 $InstallStatus = [ordered]@{
+  Version = $PackageVersion
+  InstallMode = 'fresh-install'
   CoreInstalled = $false
   InjectionVerified = $false
   ManagedPlugins = 0
@@ -34,6 +41,14 @@ $InstallStatus = [ordered]@{
   DiscordRelaunched = $false
   ScheduledTask = 'not-attempted'
   ManualRepairShortcut = $false
+  ReleaseUrl = $ReleaseUrl
+  LatestReleaseUrl = $LatestReleaseUrl
+  InstalledAt = $null
+  InstallerSourcePath = $SourceRoot
+  InstallPath = $TargetRoot
+  WindowsVersion = $null
+  FailureReason = $null
+  LatestLogPath = $null
 }
 
 function Write-InstallLog {
@@ -41,9 +56,120 @@ function Write-InstallLog {
   $installLogDir = Join-Path $TargetRoot 'logs'
   New-Item -ItemType Directory -Force -Path $installLogDir | Out-Null
   $installLogPath = Join-Path $installLogDir ("installer-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
+  $script:InstallStatus.LatestLogPath = $installLogPath
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
   Add-Content -LiteralPath $installLogPath -Value $line
   Write-Host $line
+}
+
+function Get-ExistingInstalledVersion {
+  $installedVersionPath = Join-Path $TargetRoot 'VERSION'
+  if (-not (Test-Path -LiteralPath $installedVersionPath)) { return $null }
+  $raw = (Get-Content -LiteralPath $installedVersionPath -Raw).Trim()
+  if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
+  return $raw
+}
+
+function Get-InstallMode {
+  param([string]$ExistingVersion, [string]$CurrentVersion)
+
+  if ([string]::IsNullOrWhiteSpace($ExistingVersion)) { return 'fresh-install' }
+  if ($ExistingVersion -eq $CurrentVersion) { return 'reinstall' }
+  return 'update'
+}
+
+function Write-InstalledVersionFiles {
+  param($Compatibility)
+
+  $runtimeDir = Join-Path $TargetRoot 'runtime'
+  New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+  [System.IO.File]::WriteAllText(
+    (Join-Path $TargetRoot 'VERSION'),
+    $PackageVersion + [Environment]::NewLine,
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+
+  $taskStatusPath = Join-Path $runtimeDir 'task-status.json'
+  $taskStatus = $null
+  if (Test-Path -LiteralPath $taskStatusPath) {
+    try { $taskStatus = Get-Content -LiteralPath $taskStatusPath -Raw | ConvertFrom-Json } catch { }
+  }
+
+  $manualRepairShortcutInstalled = $InstallStatus.ManualRepairShortcut -or $SkipShortcuts
+  $scheduledTaskInstalled = $InstallStatus.ScheduledTask -in @('installed', 'installed-logon-only', 'deferred')
+  $installedVersion = [ordered]@{
+    version = $PackageVersion
+    installed_at = $InstallStatus.InstalledAt
+    install_mode = $InstallStatus.InstallMode
+    install_completed = $InstallStatus.CoreInstalled
+    installer_source_path = $InstallStatus.InstallerSourcePath
+    install_path = $TargetRoot
+    target_user = $TargetProfile.UserName
+    target_roaming_appdata = $TargetProfile.RoamingAppData
+    target_local_appdata = $TargetProfile.LocalAppData
+    discord_path = $TargetProfile.DiscordRoot
+    betterdiscord_path = $TargetProfile.BetterDiscordRoot
+    bdcli_path = Get-BdcliPath
+    betterdiscord_injection_verified = $InstallStatus.InjectionVerified
+    managed_plugins = $InstallStatus.ManagedPlugins
+    managed_themes = $InstallStatus.ManagedThemes
+    scheduled_task_installed = $scheduledTaskInstalled
+    scheduled_task_status = $InstallStatus.ScheduledTask
+    scheduled_task_message = if ($taskStatus) { $taskStatus.message } else { $null }
+    manual_repair_shortcut_installed = $manualRepairShortcutInstalled
+    repo_url = $RepoUrl
+    release_url = $ReleaseUrl
+    installer_sha256 = $null
+    windows_version = $Compatibility.WindowsCaption
+    windows_display_version = $Compatibility.WindowsDisplayVersion
+    windows_build = $Compatibility.WindowsBuild
+    compatibility_mode = if ($Compatibility.CustomWindowsSuspected) { 'custom-windows-detected' } else { 'standard-windows' }
+    custom_windows_detected = [bool]$Compatibility.CustomWindowsSuspected
+    failure_reason = $InstallStatus.FailureReason
+    latest_log_path = $InstallStatus.LatestLogPath
+  }
+  [System.IO.File]::WriteAllText(
+    (Join-Path $runtimeDir 'installed-version.json'),
+    ($installedVersion | ConvertTo-Json -Depth 6),
+    (New-Object System.Text.UTF8Encoding($false))
+  )
+}
+
+function Write-StatusText {
+  param($Compatibility)
+
+  $taskMessage = switch ($InstallStatus.ScheduledTask) {
+    'installed' { 'installed' }
+    'installed-logon-only' { 'installed for sign-in only; wake-event support is unavailable' }
+    'deferred' { 'setup handled by the elevated installer stage' }
+    default { 'unavailable; use the Repair BetterDiscord shortcut after Discord updates' }
+  }
+  $statusText = @(
+    'BD-AUTO Status',
+    "Version: $PackageVersion",
+    "Installed: $($InstallStatus.InstalledAt)",
+    "Install mode: $($InstallStatus.InstallMode)",
+    "Install path: $TargetRoot",
+    "Target user: $($TargetProfile.UserName)",
+    "Discord path: $($TargetProfile.DiscordRoot)",
+    "BetterDiscord path: $($TargetProfile.BetterDiscordRoot)",
+    "BetterDiscord injection: $(if ($InstallStatus.InjectionVerified) { 'verified' } else { 'not verified' })",
+    "Plugins: $($InstallStatus.ManagedPlugins)/16",
+    "Themes: $($InstallStatus.ManagedThemes)/2",
+    "Scheduled task: $taskMessage",
+    "Manual repair shortcut: $(if ($InstallStatus.ManualRepairShortcut -or $SkipShortcuts) { 'installed' } else { 'not installed' })",
+    "Latest log: $($InstallStatus.LatestLogPath)",
+    "Release: $ReleaseUrl",
+    "Latest releases: $LatestReleaseUrl"
+  )
+  if ($InstallStatus.FailureReason) {
+    $statusText += "Failure reason: $($InstallStatus.FailureReason)"
+  }
+  [System.IO.File]::WriteAllText(
+    (Join-Path $TargetRoot 'BD-AUTO-STATUS.txt'),
+    (($statusText -join [Environment]::NewLine) + [Environment]::NewLine),
+    (New-Object System.Text.UTF8Encoding($false))
+  )
 }
 
 function Invoke-SelfElevate {
@@ -196,27 +322,52 @@ function Install-BetterDiscord {
     throw 'BetterDiscord CLI not available after setup.'
   }
 
-  $discordRoot = $TargetProfile.DiscordRoot
-  $discordProcessIds = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile)
-  $discordProcesses = @($discordProcessIds | ForEach-Object {
-    Get-Process -Id $_ -ErrorAction SilentlyContinue
-  } | Where-Object { $_ } | Sort-Object Id -Unique)
-  if ($discordProcesses.Count -gt 0) {
-    Write-InstallLog ('Stopping Discord before BetterDiscord install: {0}' -f (($discordProcesses | Select-Object -ExpandProperty Id) -join ', '))
-    foreach ($proc in $discordProcesses) {
-      try { $null = $proc.CloseMainWindow() } catch { }
+  function Stop-DiscordForInstall {
+    param([int]$GracefulTimeoutSeconds = 3, [int]$ForceAttempts = 5)
+
+    $ids = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile | Sort-Object -Unique)
+    if ($ids.Count -eq 0) { return }
+
+    $processes = @($ids | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } | Where-Object { $_ })
+    foreach ($process in $processes) {
+      try { [void]$process.CloseMainWindow() } catch { }
     }
-    Start-Sleep -Seconds 3
-    foreach ($proc in $discordProcesses) {
-      if (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue) {
-        try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
+
+    $deadline = (Get-Date).AddSeconds($GracefulTimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+      $remainingIds = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile | Sort-Object -Unique)
+      if ($remainingIds.Count -eq 0) { return }
+      Start-Sleep -Milliseconds 500
+    }
+
+    for ($attempt = 1; $attempt -le $ForceAttempts; $attempt++) {
+      $remainingIds = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile | Sort-Object -Unique)
+      if ($remainingIds.Count -eq 0) { return }
+      foreach ($id in $remainingIds) {
+        try {
+          Stop-Process -Id $id -Force -ErrorAction Stop
+        } catch {
+          try { & taskkill.exe /PID $id /T /F 2>&1 | Out-Null } catch { }
+        }
       }
+      Start-Sleep -Seconds 1
     }
+
+    try { & taskkill.exe /IM Discord.exe /F /T 2>&1 | Out-Null } catch { }
+    try { & taskkill.exe /IM Update.exe /F /T 2>&1 | Out-Null } catch { }
     Start-Sleep -Seconds 2
-    $remaining = @($discordProcesses | Where-Object { Get-Process -Id $_.Id -ErrorAction SilentlyContinue })
-    if ($remaining.Count -gt 0) {
-      throw "Could not stop all Discord processes: $($remaining.Id -join ', ')"
+
+    $remainingIds = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile | Sort-Object -Unique)
+    if ($remainingIds.Count -gt 0) {
+      throw "Could not stop all Discord processes: $($remainingIds -join ', ')"
     }
+  }
+
+  $discordRoot = $TargetProfile.DiscordRoot
+  $discordProcessIds = @(Get-BDAutoDiscordProcessIds -Profile $TargetProfile | Sort-Object -Unique)
+  if ($discordProcessIds.Count -gt 0) {
+    Write-InstallLog ('Stopping Discord before BetterDiscord install: {0}' -f ($discordProcessIds -join ', '))
+    Stop-DiscordForInstall
   }
 
   $discordApp = Get-ChildItem -LiteralPath $discordRoot -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
@@ -405,7 +556,10 @@ function Save-InstallSummary {
   $summary = @(
     "BD-AUTO installation summary",
     "Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
+    "BD-AUTO version: $PackageVersion",
+    "Release: $ReleaseUrl",
     '',
+    "Install mode: $(switch ($InstallStatus.InstallMode) { 'update' { "Updating BD-AUTO from $(Get-ExistingInstalledVersion) to $PackageVersion" } 'reinstall' { "Reinstalling/repairing BD-AUTO v$PackageVersion" } default { "Fresh install of BD-AUTO v$PackageVersion" } })",
     "Core installation: $(if ($InstallStatus.CoreInstalled) { 'successful' } else { 'incomplete' })",
     "BetterDiscord injection: $(if ($InstallStatus.InjectionVerified) { 'verified' } else { 'not verified' })",
     "Managed plugins: $($InstallStatus.ManagedPlugins)/16",
@@ -417,6 +571,7 @@ function Save-InstallSummary {
     "Windows: $($Compatibility.WindowsCaption) $($Compatibility.WindowsDisplayVersion) build $($Compatibility.WindowsBuild)",
     "PowerShell: $($Compatibility.PowerShellVersion)",
     "Target user: $($TargetProfile.UserName)",
+    "Install path: $TargetRoot",
     "Discord: $($TargetProfile.DiscordRoot)",
     "BetterDiscord: $($TargetProfile.BetterDiscordRoot)",
     "Bundled bdcli: $($Compatibility.BundledBdcliPresent)",
@@ -424,6 +579,8 @@ function Save-InstallSummary {
     "Task Scheduler available: $($Compatibility.TaskSchedulerAvailable)",
     $customNote,
     '',
+    "Status file: $TargetRoot\BD-AUTO-STATUS.txt",
+    "Installed version JSON: $TargetRoot\runtime\installed-version.json",
     "Logs: $TargetRoot\logs and $TargetRoot\runtime\logs",
     'Manual fallback: run the Repair BetterDiscord desktop or Start Menu shortcut.'
   ) -join [Environment]::NewLine
@@ -466,6 +623,8 @@ $TargetProfile = Resolve-BDAutoTargetProfile `
   -TargetUserName $TargetUserName `
   -TargetRoamingAppData $TargetRoamingAppData `
   -TargetLocalAppData $TargetLocalAppData
+$existingInstalledVersion = Get-ExistingInstalledVersion
+$InstallStatus.InstallMode = Get-InstallMode -ExistingVersion $existingInstalledVersion -CurrentVersion $PackageVersion
 
 if (-not $DryRun -and -not $SkipTaskInstall -and -not (Test-BDAutoAdministrator)) {
   Invoke-SelfElevate -ResolvedProfile $TargetProfile
@@ -473,6 +632,9 @@ if (-not $DryRun -and -not $SkipTaskInstall -and -not (Test-BDAutoAdministrator)
 
 New-Item -ItemType Directory -Force -Path $TargetRoot | Out-Null
 Write-InstallLog "Starting BD-AUTO install from $SourceRoot to $TargetRoot"
+Write-InstallLog "BD-AUTO version: $PackageVersion"
+Write-InstallLog "Release URL: $ReleaseUrl"
+Write-InstallLog ("Install mode: {0}" -f $(switch ($InstallStatus.InstallMode) { 'update' { "Updating BD-AUTO from $existingInstalledVersion to $PackageVersion" } 'reinstall' { "Reinstalling/repairing BD-AUTO v$PackageVersion" } default { "Fresh install of BD-AUTO v$PackageVersion" } }))
 Write-BDAutoTargetProfileLog -Profile $TargetProfile -WriteLog ${function:Write-InstallLog}
 
 if (-not $DryRun) {
@@ -481,6 +643,7 @@ if (-not $DryRun) {
     Copy-Bundle -SourceRoot $SourceRoot -DestinationRoot $TargetRoot
     New-Item -ItemType Directory -Force -Path (Join-Path $TargetRoot 'logs'), (Join-Path $TargetRoot 'runtime'), (Join-Path $TargetRoot 'bin') | Out-Null
     $Compatibility = Get-BDAutoCompatibilityReport -TargetProfile $TargetProfile -RootPath $TargetRoot
+    $InstallStatus.WindowsVersion = "$($Compatibility.WindowsCaption) $($Compatibility.WindowsDisplayVersion) build $($Compatibility.WindowsBuild)"
     Write-BDAutoCompatibilityLog -Report $Compatibility -WriteLog ${function:Write-InstallLog}
     Save-BDAutoCompatibilityReport -Report $Compatibility -Path (Join-Path $TargetRoot 'runtime\compatibility.json')
     Ensure-BdcliBinary
@@ -491,10 +654,14 @@ if (-not $DryRun) {
     New-DesktopShortcut
     $InstallStatus.DiscordRelaunched = [bool](Start-Discord)
     $InstallStatus.CoreInstalled = $true
+    $InstallStatus.InstalledAt = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    Write-InstalledVersionFiles -Compatibility $Compatibility
+    Write-StatusText -Compatibility $Compatibility
     Save-InstallSummary -Compatibility $Compatibility
     Write-InstallLog 'Install completed successfully.'
   } catch {
     Write-InstallLog "Install failed: $_" 'ERROR'
+    $InstallStatus.FailureReason = $_.Exception.Message
     if (-not $NoLaunchDiscord) {
       try {
         $InstallStatus.DiscordRelaunched = [bool](Start-Discord)
@@ -502,7 +669,12 @@ if (-not $DryRun) {
         Write-InstallLog "Discord recovery launch failed: $_" 'ERROR'
       }
     }
-    if ($Compatibility) { Save-InstallSummary -Compatibility $Compatibility }
+    if ($Compatibility) {
+      if (-not $InstallStatus.InstalledAt) { $InstallStatus.InstalledAt = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') }
+      Write-InstalledVersionFiles -Compatibility $Compatibility
+      Write-StatusText -Compatibility $Compatibility
+      Save-InstallSummary -Compatibility $Compatibility
+    }
     throw
   }
 } else {

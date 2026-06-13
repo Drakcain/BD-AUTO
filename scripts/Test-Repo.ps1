@@ -16,6 +16,7 @@ function Test-Condition {
 }
 
 $requiredFiles = @(
+  'VERSION',
   'README.md',
   'BUILD.md',
   'LICENSE',
@@ -73,6 +74,7 @@ $buildScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts\Build.ps1'
 $signingDoc = Get-Content -LiteralPath (Join-Path $RepoRoot 'SIGNING.md') -Raw
 Test-Condition -Name 'Installer notice page' -Passed ($installerScript -match 'InfoBeforeFile=\.\.\\INSTALL-NOTICE\.txt') -Detail 'configured'
 Test-Condition -Name 'Installed legal files' -Passed ($installerScript -match 'THIRD-PARTY-NOTICES\.md' -and $installerScript -match '\.\.\\LICENSE') -Detail 'license and notices included'
+Test-Condition -Name 'Installed version file' -Passed ($installerScript -match '\.\.\\VERSION') -Detail 'version copied into app root'
 Test-Condition -Name 'Automatic UAC request' -Passed ($installerScript -match 'PrivilegesRequired=admin') -Detail 'configured'
 Test-Condition -Name 'Signing guidance' -Passed ($signingDoc -match 'does not remove the Windows User Account Control prompt' -and $signingDoc -match 'Never commit certificate files, private keys') -Detail 'UAC and secret handling documented'
 
@@ -112,6 +114,8 @@ Test-Condition -Name 'Compatibility preflight' -Passed ($compatibilityScript -ma
 Test-Condition -Name 'Graceful task fallback' -Passed ($taskScript -match 'installed-logon-only' -and $taskScript -match 'task-status\.json' -and $installerScript -match 'Scheduled repair automation could not be installed') -Detail 'task failure does not abort core setup'
 Test-Condition -Name 'Always-present repair shortcuts' -Passed ($installerScript -match '\{autodesktop\}\\Repair BetterDiscord' -and $installerScript -match '\{group\}\\Repair BetterDiscord' -and $installerScript -match '-RestoreStash') -Detail 'desktop and Start Menu fallback configured'
 Test-Condition -Name 'Installer summary' -Passed ($installScript -match 'install-summary\.txt' -and $installerScript -match 'Installation Summary') -Detail 'machine-readable and user-facing results configured'
+Test-Condition -Name 'Status artifacts' -Passed ($installScript -match 'installed-version\.json' -and $installScript -match 'BD-AUTO-STATUS\.txt' -and $installerScript -match 'View BD-AUTO Status') -Detail 'version and status outputs configured'
+Test-Condition -Name 'Status command' -Passed ($watchdogScript -match '\[switch\]\$Status' -and $watchdogScript -match 'Show-Status') -Detail 'read-only status mode present'
 Test-Condition -Name 'Safe duplicate cleanup' -Passed ($installScript -match 'RemoveRecognizedDuplicates' -and $watchdogScript -match 'RemoveRecognizedDuplicates') -Detail 'recognized duplicates removed without pruning unrelated addons'
 Test-Condition -Name 'PowerShell 5.1 manifest enumeration' -Passed ($syncScript -match 'foreach \(\$entry in \$parsedManifest\)' -and $installScript -match 'foreach \(\$entry in \$parsedManifest\)') -Detail 'JSON arrays explicitly enumerated'
 Test-Condition -Name 'Non-elevated Discord relaunch' -Passed ($installScript -match 'Shell\.Application' -and $watchdogScript -match 'Shell\.Application') -Detail 'elevated repair delegates launch to Explorer'

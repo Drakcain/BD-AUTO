@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+  [switch]$Status,
   [switch]$DryRun,
   [switch]$ForceRepair,
   [switch]$ReopenDiscord,
@@ -56,6 +57,9 @@ $StatePath = Join-Path $RuntimeRoot 'state.json'
 $ManifestPath = Join-Path $RootDir 'addons.manifest.json'
 $AddonSyncPath = Join-Path $RootDir 'Sync-BetterDiscordAddons.ps1'
 $AddonCacheRoot = Join-Path $RootDir 'BetterDiscord'
+$VersionFilePath = Join-Path $RootDir 'VERSION'
+$InstalledVersionPath = Join-Path $RuntimeRoot 'installed-version.json'
+$ReleaseUrl = $null
 $DiscordRoot = $TargetProfile.DiscordRoot
 $ActiveBDRoot = $TargetProfile.BetterDiscordRoot
 $ActivePlugins = Join-Path $ActiveBDRoot 'plugins'
@@ -65,11 +69,67 @@ $ActiveData = Join-Path $ActiveBDRoot 'data'
 New-Item -ItemType Directory -Force -Path $RuntimeRoot, $LogDir, $BackupRoot | Out-Null
 $LogPath = Join-Path $LogDir ("watchdog-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
 
+function Get-BDAutoVersion {
+  if (Test-Path -LiteralPath $VersionFilePath) {
+    return (Get-Content -LiteralPath $VersionFilePath -Raw).Trim()
+  }
+  return 'unknown'
+}
+
 function Write-Log {
   param([string]$Message, [string]$Level = 'INFO')
   $line = "[{0}] [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
   Add-Content -LiteralPath $LogPath -Value $line
   Write-Host $line
+}
+
+function Get-ScheduledTaskStatus {
+  $taskStatusPath = Join-Path $RuntimeRoot 'task-status.json'
+  if (-not (Test-Path -LiteralPath $taskStatusPath)) {
+    return [pscustomobject]@{
+      status = 'unknown'
+      message = 'task status file not found'
+    }
+  }
+  try {
+    return Get-Content -LiteralPath $taskStatusPath -Raw | ConvertFrom-Json
+  } catch {
+    return [pscustomobject]@{
+      status = 'unknown'
+      message = 'task status file could not be parsed'
+    }
+  }
+}
+
+function Show-Status {
+  $version = Get-BDAutoVersion
+  $releaseUrl = "https://github.com/Drakcain/BD-AUTO/releases/tag/v$version"
+  $installedVersion = $null
+  if (Test-Path -LiteralPath $InstalledVersionPath) {
+    try { $installedVersion = Get-Content -LiteralPath $InstalledVersionPath -Raw | ConvertFrom-Json } catch { }
+  }
+  $taskStatus = Get-ScheduledTaskStatus
+  $discordApp = Get-DiscordApp
+  $discordAppPath = if ($discordApp) { $discordApp.FullName } else { $null }
+  $injectionInstalled = if ($discordAppPath) { Test-BetterDiscordInjection -DiscordAppPath $discordAppPath } else { $false }
+  $latestLog = Get-ChildItem -LiteralPath $LogDir -File -Filter 'watchdog-*.log' -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+  @(
+    "BD-AUTO installed version: $version"
+    "Install path: $RootDir"
+    "Target user: $($TargetProfile.UserName)"
+    "Discord path: $DiscordRoot"
+    "BetterDiscord path: $ActiveBDRoot"
+    "BetterDiscord injection: $(if ($injectionInstalled) { 'verified' } else { 'not verified' })"
+    "Plugins: $(Get-Count -Path $ActivePlugins -Filter '*.plugin.js')"
+    "Themes: $(Get-Count -Path $ActiveThemes -Filter '*.theme.css')"
+    "Scheduled task: $($taskStatus.status)"
+    "Scheduled task detail: $($taskStatus.message)"
+    "Latest log path: $(if ($latestLog) { $latestLog.FullName } else { $LogPath })"
+    "Release URL: $releaseUrl"
+    "Installed-at: $(if ($installedVersion) { $installedVersion.installed_at } else { 'unknown' })"
+  ) | ForEach-Object { Write-Host $_ }
 }
 
 function Get-Count {
@@ -492,10 +552,15 @@ function Invoke-ElevatedRepair {
 }
 
 $state = Load-State
+Write-Log "BD-AUTO version: $(Get-BDAutoVersion)"
 Write-BDAutoTargetProfileLog -Profile $TargetProfile -WriteLog ${function:Write-Log}
 $compatibility = Get-BDAutoCompatibilityReport -TargetProfile $TargetProfile -RootPath $RootDir
 Write-BDAutoCompatibilityLog -Report $compatibility -WriteLog ${function:Write-Log}
 Save-BDAutoCompatibilityReport -Report $compatibility -Path (Join-Path $RuntimeRoot 'compatibility.json')
+if ($Status) {
+  Show-Status
+  exit 0
+}
 Repair-WatchdogTaskDefinition
 if ($StartupDelaySeconds -gt 0) {
   Write-Log "Startup delay: $StartupDelaySeconds second(s)."

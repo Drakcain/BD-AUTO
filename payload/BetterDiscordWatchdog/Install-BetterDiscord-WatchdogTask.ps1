@@ -12,6 +12,9 @@ $ErrorActionPreference = 'Stop'
 $taskName = 'BetterDiscord Auto Repair Watchdog'
 $scriptPath = 'C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1'
 $taskStatusPath = Join-Path (Split-Path -Parent $ProfileStatePath) 'task-status.json'
+$statusTextPath = 'C:\Tools\BD-AUTO\BD-AUTO-STATUS.txt'
+$installedVersionPath = 'C:\Tools\BD-AUTO\runtime\installed-version.json'
+$versionFilePath = 'C:\Tools\BD-AUTO\VERSION'
 
 function Write-TaskStatus {
   param(
@@ -73,10 +76,44 @@ function Update-InstallSummaryTaskStatus {
   }
 }
 
+function Update-VersionAndStatusArtifacts {
+  param(
+    [string]$Status,
+    [string]$Message
+  )
+
+  if (Test-Path -LiteralPath $installedVersionPath) {
+    try {
+      $installedVersion = Get-Content -LiteralPath $installedVersionPath -Raw | ConvertFrom-Json
+      $installedVersion.scheduled_task_installed = ($Status -in @('installed', 'installed-logon-only'))
+      $installedVersion.scheduled_task_status = $Status
+      $installedVersion.scheduled_task_message = $Message
+      [System.IO.File]::WriteAllText(
+        $installedVersionPath,
+        ($installedVersion | ConvertTo-Json -Depth 6),
+        (New-Object System.Text.UTF8Encoding($false))
+      )
+    } catch { }
+  }
+
+  if (Test-Path -LiteralPath $statusTextPath) {
+    try {
+      $statusText = Get-Content -LiteralPath $statusTextPath -Raw
+      $statusText = $statusText -replace '(?m)^Scheduled task:.*$', "Scheduled task: $Message"
+      [System.IO.File]::WriteAllText(
+        $statusTextPath,
+        $statusText,
+        (New-Object System.Text.UTF8Encoding($false))
+      )
+    } catch { }
+  }
+}
+
 trap {
   $message = "Scheduled task setup failed: $($_.Exception.Message)"
   try { Write-TaskStatus -Status 'unavailable' -Message $message } catch { }
   try { Update-InstallSummaryTaskStatus -Status 'unavailable' -Message 'unavailable; use the Repair BetterDiscord shortcut after Discord updates' } catch { }
+  try { Update-VersionAndStatusArtifacts -Status 'unavailable' -Message 'unavailable; use the Repair BetterDiscord shortcut after Discord updates' } catch { }
   [Console]::Error.WriteLine($message)
   exit 2
 }
@@ -226,6 +263,13 @@ Write-TaskStatus -Status $(if ($wakeTriggerInstalled) { 'installed' } else { 'in
   }) `
   -WakeTriggerInstalled $wakeTriggerInstalled
 Update-InstallSummaryTaskStatus `
+  -Status $(if ($wakeTriggerInstalled) { 'installed' } else { 'installed-logon-only' }) `
+  -Message $(if ($wakeTriggerInstalled) {
+    'installed for sign-in and resume from sleep'
+  } else {
+    'installed for sign-in only; wake-event support is unavailable'
+  })
+Update-VersionAndStatusArtifacts `
   -Status $(if ($wakeTriggerInstalled) { 'installed' } else { 'installed-logon-only' }) `
   -Message $(if ($wakeTriggerInstalled) {
     'installed for sign-in and resume from sleep'

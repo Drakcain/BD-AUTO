@@ -50,9 +50,24 @@ Windows may request UAC approval when a repair must stop an elevated Discord pro
 The Start Menu also contains:
 
 - **BD-AUTO Logs**
+- **View BD-AUTO Status**
 - **Installation Summary**
 - **Third-Party Notices**
 - **Signing and Windows Warnings**
+
+## How To Check Your Version
+
+Use any of these:
+
+- Start Menu: **BD-AUTO > View BD-AUTO Status**
+- `C:\Tools\BD-AUTO\VERSION`
+- `C:\Tools\BD-AUTO\BD-AUTO-STATUS.txt`
+- `C:\Tools\BD-AUTO\runtime\installed-version.json`
+- PowerShell:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -Status
+```
 
 ## Troubleshooting Add-On Toggles
 
