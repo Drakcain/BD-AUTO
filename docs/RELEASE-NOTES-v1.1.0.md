@@ -26,6 +26,7 @@
 
 - Adds `Install-BD-AUTO.cmd` for a double-click portable source bootstrap.
 - Keeps `BD-AUTO-Setup.exe` as the preferred friend-facing installer.
+- Keeps manual repair in the Start Menu, stops creating a desktop icon, and removes the legacy desktop shortcut during upgrades.
 - Writes addon decisions to `C:\Tools\BD-AUTO\runtime\addon-audit.json`.
 - Retains hidden sign-in and resume triggers without a recurring background timer.
 - Reports stock UAC prompting, administrator auto-elevation policies, and disabled-UAC systems without changing Windows security policy.
@@ -37,4 +38,4 @@
 
 ## Release State
 
-This document describes the v1.1.0 candidate. It is not public until the source is committed, tagged, pushed, and the GitHub release artifact is published.
+This document describes the public v1.1.0 release. GitHub Releases contains the friend-facing installer and its SHA-256 checksum.

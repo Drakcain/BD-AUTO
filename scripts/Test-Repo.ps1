@@ -119,7 +119,15 @@ Test-Condition -Name 'winget optional at runtime' -Passed ($installScript -notma
 Test-Condition -Name 'Compatibility preflight' -Passed ($compatibilityScript -match 'CustomWindowsSuspected' -and $compatibilityScript -match 'TaskSchedulerAvailable' -and $installScript -match 'compatibility\.json' -and $watchdogScript -match 'compatibility\.json') -Detail 'stock and reduced-component Windows reported'
 Test-Condition -Name 'Adaptive UAC reporting' -Passed ($compatibilityScript -match 'UacElevationMode' -and $compatibilityScript -match 'auto-elevate-administrators' -and $compatibilityScript -match 'prompt-according-to-windows-policy' -and $compatibilityScript -match 'uac-disabled') -Detail 'stock, auto-elevate, and disabled-UAC modes distinguished'
 Test-Condition -Name 'Graceful task fallback' -Passed ($taskScript -match 'installed-logon-only' -and $taskScript -match 'task-status\.json' -and $installerScript -match 'Scheduled repair automation could not be installed') -Detail 'task failure does not abort core setup'
-Test-Condition -Name 'Always-present repair shortcuts' -Passed ($installerScript -match '\{autodesktop\}\\Repair BetterDiscord' -and $installerScript -match '\{group\}\\Repair BetterDiscord' -and $installerScript -match '-RestoreStash') -Detail 'desktop and Start Menu fallback configured'
+Test-Condition -Name 'Start Menu repair shortcut only' -Passed (
+  $installerScript -notmatch '\{autodesktop\}\\Repair BetterDiscord' -and
+  $installerScript -match '\{group\}\\Repair BetterDiscord' -and
+  $installerScript -match '\{commondesktop\}\\Repair BetterDiscord\.lnk' -and
+  $installScript -match 'Microsoft\\Windows\\Start Menu\\Programs\\BD-AUTO' -and
+  $installScript -match "ProfileRoot 'Desktop\\Repair BetterDiscord\.lnk'" -and
+  $installScript -match 'Removed legacy desktop shortcut' -and
+  $installerScript -match '-RestoreStash'
+) -Detail 'Start Menu fallback configured; legacy desktop links removed'
 Test-Condition -Name 'Installer summary' -Passed ($installScript -match 'install-summary\.txt' -and $installerScript -match 'Installation Summary') -Detail 'machine-readable and user-facing results configured'
 Test-Condition -Name 'Status artifacts' -Passed ($installScript -match 'installed-version\.json' -and $installScript -match 'BD-AUTO-STATUS\.txt' -and $installerScript -match 'View BD-AUTO Status') -Detail 'version and status outputs configured'
 Test-Condition -Name 'Status command' -Passed ($watchdogScript -match '\[switch\]\$Status' -and $watchdogScript -match 'Show-Status') -Detail 'read-only status mode present'

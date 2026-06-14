@@ -2,7 +2,7 @@
 
 This directory is installed to `C:\Tools\BD-AUTO` by BD-AUTO Setup.
 
-Use the **Repair BetterDiscord** desktop or Start Menu shortcut for a manual repair. Source, build instructions, and release downloads are maintained at:
+Use **BD-AUTO > Repair BetterDiscord** from the Start Menu for a manual repair. Source, build instructions, and release downloads are maintained at:
 
 https://github.com/Drakcain/BD-AUTO
 
@@ -18,4 +18,4 @@ Compatibility and setup results are recorded in:
 - `runtime\install-summary.txt`
 - `runtime\task-status.json`
 
-Task Scheduler is optional. If scheduled automation is unavailable on a customized Windows build, the manual repair shortcuts remain supported.
+Task Scheduler is optional. If scheduled automation is unavailable on a customized Windows build, the Start Menu repair shortcut remains supported.

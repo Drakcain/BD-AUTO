@@ -49,7 +49,6 @@ Name: "{app}\logs"; Permissions: users-modify
 Name: "{app}\runtime"; Permissions: users-modify
 
 [Icons]
-Name: "{autodesktop}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -RestoreStash -ReopenDiscord"; WorkingDir: "{app}"
 Name: "{group}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -RestoreStash -ReopenDiscord"; WorkingDir: "{app}"
 Name: "{group}\BD-AUTO Logs"; Filename: "{app}\runtime\logs"
 Name: "{group}\View BD-AUTO Status"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\BD-AUTO-STATUS.txt"""; WorkingDir: "{app}"
@@ -59,10 +58,14 @@ Name: "{group}\BD-AUTO on GitHub"; Filename: "{#MyAppURL}"
 Name: "{group}\Third-Party Notices"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\THIRD-PARTY-NOTICES.md"""; WorkingDir: "{app}"
 Name: "{group}\Signing and Windows Warnings"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\SIGNING.md"""; WorkingDir: "{app}"
 
+[InstallDelete]
+Type: files; Name: "{commondesktop}\Repair BetterDiscord.lnk"
+
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\Remove-BetterDiscord-WatchdogTask.ps1"""; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveWatchdogTask"
 
 [UninstallDelete]
+Type: files; Name: "{commondesktop}\Repair BetterDiscord.lnk"
 Type: filesandordirs; Name: "{app}\bin"
 Type: filesandordirs; Name: "{app}\BetterDiscord"
 Type: filesandordirs; Name: "{app}\logs"
@@ -120,7 +123,7 @@ begin
         '' + #13#10 + #13#10 +
         'WARNING: Scheduled repair automation could not be installed.' + #13#10 +
         'The core BetterDiscord installation remains usable.' + #13#10 +
-        'Use the Repair BetterDiscord desktop or Start Menu shortcut after a Discord update.' + #13#10 +
+        'Use BD-AUTO > Repair BetterDiscord from the Start Menu after a Discord update.' + #13#10 +
         'Task setup exit code: ' + IntToStr(ResultCode);
     end;
 

@@ -489,31 +489,46 @@ function Install-WatchdogTask {
   }
 }
 
-function New-DesktopShortcut {
+function Install-RepairShortcut {
+  $legacyShortcutPaths = @(
+    (Join-Path $TargetProfile.ProfileRoot 'Desktop\Repair BetterDiscord.lnk'),
+    'C:\Users\Public\Desktop\Repair BetterDiscord.lnk'
+  ) | Select-Object -Unique
+  foreach ($legacyShortcutPath in $legacyShortcutPaths) {
+    if (-not (Test-Path -LiteralPath $legacyShortcutPath)) { continue }
+    try {
+      Remove-Item -LiteralPath $legacyShortcutPath -Force
+      Write-InstallLog "Removed legacy desktop shortcut: $legacyShortcutPath"
+    } catch {
+      Write-InstallLog "Could not remove legacy desktop shortcut $legacyShortcutPath. $_" 'WARN'
+    }
+  }
+
   if ($SkipShortcuts) {
     $script:InstallStatus.ManualRepairShortcut = $true
-    Write-InstallLog 'Shortcut creation skipped.'
+    Write-InstallLog 'Start Menu shortcut creation is handled by setup.'
     return
   }
 
-  $shortcutDir = Join-Path $TargetProfile.ProfileRoot 'Desktop'
+  $shortcutDir = Join-Path $TargetProfile.RoamingAppData 'Microsoft\Windows\Start Menu\Programs\BD-AUTO'
   if ([string]::IsNullOrWhiteSpace($shortcutDir)) {
-    Write-InstallLog 'Desktop path not found; skipping shortcut creation.' 'WARN'
+    Write-InstallLog 'Start Menu path not found; skipping shortcut creation.' 'WARN'
     return
   }
+  New-Item -ItemType Directory -Force -Path $shortcutDir | Out-Null
 
   $watchdogScript = Join-Path $TargetRoot 'BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1'
   $shortcutPath = Join-Path $shortcutDir 'Repair BetterDiscord.lnk'
   $wsh = New-Object -ComObject WScript.Shell
   $shortcut = $wsh.CreateShortcut($shortcutPath)
-  $shortcut.TargetPath = 'powershell.exe'
+  $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
   $shortcut.Arguments = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -ForceRepair -RestoreStash -ReopenDiscord' -f $watchdogScript)
   $shortcut.WorkingDirectory = $TargetRoot
   $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,46"
   $shortcut.Description = 'Repair and reopen BetterDiscord'
   $shortcut.Save()
   $script:InstallStatus.ManualRepairShortcut = $true
-  Write-InstallLog "Desktop shortcut created: $shortcutPath"
+  Write-InstallLog "Start Menu shortcut created: $shortcutPath"
 }
 
 function Sync-AddonManifest {
@@ -603,7 +618,7 @@ function Save-InstallSummary {
     "Installed version JSON: $TargetRoot\runtime\installed-version.json",
     "Addon audit JSON: $TargetRoot\runtime\addon-audit.json",
     "Logs: $TargetRoot\logs and $TargetRoot\runtime\logs",
-    'Manual fallback: run the Repair BetterDiscord desktop or Start Menu shortcut.'
+    'Manual fallback: open BD-AUTO > Repair BetterDiscord from the Start Menu.'
   ) -join [Environment]::NewLine
   [System.IO.File]::WriteAllText(
     (Join-Path $runtimeDir 'install-summary.txt'),
@@ -672,7 +687,7 @@ if (-not $DryRun) {
     Sync-AddonManifest
     Save-TargetProfileState
     [void](Install-WatchdogTask)
-    New-DesktopShortcut
+    Install-RepairShortcut
     $InstallStatus.DiscordRelaunched = [bool](Start-Discord)
     $InstallStatus.CoreInstalled = $true
     $InstallStatus.InstalledAt = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')

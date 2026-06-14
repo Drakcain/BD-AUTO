@@ -24,7 +24,7 @@ The release EXE is the preferred friend-facing installer. A portable source bund
 - Creates a backup before replacing an installed addon.
 - Avoids duplicate plugin/theme source files.
 - Creates a hidden scheduled task that checks once after sign-in and once after resume from sleep when Task Scheduler supports it.
-- Keeps desktop and Start Menu repair shortcuts available when scheduled automation is disabled or stripped.
+- Keeps a Start Menu repair shortcut available when scheduled automation is disabled or stripped.
 - Uses the bundled checksum-verified official BetterDiscord CLI first and downloads one only if no usable CLI exists.
 - Closes Discord before a required repair and relaunches it afterward.
 - Retains the three newest local repair backups.
@@ -58,10 +58,9 @@ BD-AUTO follows the machine's Windows elevation policy:
 
 ## Manual Repair
 
-Use either shortcut created by setup:
+Use **BD-AUTO > Repair BetterDiscord** from the Start Menu.
 
-- Desktop: **Repair BetterDiscord**
-- Start Menu: **BD-AUTO > Repair BetterDiscord**
+BD-AUTO intentionally does not place an icon on the desktop. Upgrades remove the legacy desktop shortcut created by older releases.
 
 The repair shortcut runs the watchdog with `-ForceRepair -RestoreStash -ReopenDiscord`.
 Windows may request UAC approval when a repair must stop an elevated Discord process or modify an installation that requires administrator rights.
@@ -94,7 +93,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDisc
 If BetterDiscord appears in Discord but the Plugins or Themes page is empty:
 
 1. Exit Discord completely.
-2. Run **Repair BetterDiscord** from the desktop or Start Menu.
+2. Run **BD-AUTO > Repair BetterDiscord** from the Start Menu.
 3. Reopen Discord and check **User Settings > BetterDiscord > Plugins/Themes**.
 
 BD-AUTO records the Windows user and exact paths it targeted in:
