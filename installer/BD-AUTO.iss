@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "1.1.0"
+  #define MyAppVersion "1.1.1"
 #endif
 #ifndef MyPayloadDir
   #define MyPayloadDir "..\payload"
@@ -85,6 +85,30 @@ begin
   Result := CustomSetupExitCode;
 end;
 
+procedure ShowFinalizingSetupUi();
+begin
+  if WizardSilent then
+    exit;
+
+  WizardForm.StatusLabel.Caption :=
+    'Finishing BetterDiscord setup. Discord may close and reopen. This can take up to 2 minutes. Do not cancel.';
+  WizardForm.FilenameLabel.Caption :=
+    'Installing BetterDiscord, syncing addons, and configuring repair automation...';
+  WizardForm.CancelButton.Caption := 'Please wait';
+  WizardForm.CancelButton.Enabled := False;
+end;
+
+procedure ShowCompletedSetupUi();
+begin
+  if WizardSilent then
+    exit;
+
+  WizardForm.StatusLabel.Caption := 'BD-AUTO setup finished.';
+  WizardForm.FilenameLabel.Caption := 'BetterDiscord installation and repair automation completed.';
+  WizardForm.CancelButton.Caption := SetupMessage(msgButtonCancel);
+  WizardForm.CancelButton.Enabled := True;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -95,6 +119,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    ShowFinalizingSetupUi();
     PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
     Parameters :=
       '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass ' +
@@ -129,6 +154,8 @@ begin
 
     if not LoadStringFromFile(ExpandConstant('{app}\runtime\install-summary.txt'), Summary) then
       Summary := 'BD-AUTO core installation completed. Review C:\Tools\BD-AUTO\logs for details.';
+
+    ShowCompletedSetupUi();
 
     if not WizardSilent then
       SuppressibleMsgBox(

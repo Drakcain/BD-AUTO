@@ -38,6 +38,8 @@ There is no recurring five-minute poll and no background process that runs conti
 3. Run it and approve the Windows administrator prompt.
 4. Wait for setup to install BetterDiscord and reopen Discord.
 
+After the progress bar fills, setup continues with hidden BetterDiscord repair, add-on synchronization, and repair-task setup. The last screen can sit there for up to 2 minutes while work is still happening in the background. Do not cancel unless setup reports an error.
+
 The EXE is currently unsigned. Windows SmartScreen may show **Windows protected your PC**. Select **More info**, verify that the file came from this repository's Releases page, and select **Run anyway**.
 
 For a portable source ZIP instead:
@@ -129,7 +131,7 @@ BDFDB is DevilBro's library plugin and is required by many DevilBro plugins. If 
 2. Check the `mwittrien-bdfdb` entry in `runtime\addon-audit.json`.
 3. Confirm `downgrade_risk` is `false` and compare the installed, cached, and upstream versions.
 
-BD-AUTO v1.1.0 preserves a newer installed BDFDB, prefers the Mwittrien upstream file when it is newer, and uses the local cache only as fallback. It does not delete BDFDB settings or `0BDFDB.data.json`.
+BD-AUTO preserves a newer installed BDFDB, prefers the Mwittrien upstream file when it is newer, and uses the local cache only as fallback. It does not delete BDFDB settings or `0BDFDB.data.json`.
 
 Setup is intentionally bound to one Discord Windows profile. If UAC requests credentials for a different administrator account, BD-AUTO still performs Discord, BetterDiscord, add-on, and relaunch work as the original desktop user, then registers the elevated scheduled task for that user's SID.
 
