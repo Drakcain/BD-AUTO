@@ -27,6 +27,7 @@ $requiredFiles = @(
   '.gitignore',
   'installer\BD-AUTO.iss',
   'payload\Install-BD-AUTO.ps1',
+  'payload\Install-BD-AUTO.cmd',
   'payload\Get-BDAutoCompatibility.ps1',
   'payload\Resolve-BDAutoTargetProfile.ps1',
   'payload\Sync-BetterDiscordAddons.ps1',
@@ -34,7 +35,9 @@ $requiredFiles = @(
   'payload\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1',
   'payload\BetterDiscordWatchdog\Install-BetterDiscord-WatchdogTask.ps1',
   'payload\BetterDiscordWatchdog\Remove-BetterDiscord-WatchdogTask.ps1',
-  'scripts\Test-Compatibility.ps1'
+  'scripts\Test-Compatibility.ps1',
+  'scripts\Test-AddonSync.ps1',
+  'docs\RELEASE-NOTES-v1.1.0.md'
 )
 foreach ($file in $requiredFiles) {
   Test-Condition -Name "Required $file" -Passed (Test-Path -LiteralPath (Join-Path $RepoRoot $file)) -Detail 'present'
@@ -58,6 +61,9 @@ Test-Condition -Name 'Manifest count' -Passed ($manifest.Count -eq 18) -Detail "
 Test-Condition -Name 'Manifest duplicate filenames' -Passed (@($manifest | Group-Object kind, file_name | Where-Object Count -gt 1).Count -eq 0) -Detail 'none'
 Test-Condition -Name 'Manifest duplicate names' -Passed (@($manifest | Group-Object kind, name | Where-Object Count -gt 1).Count -eq 0) -Detail 'none'
 Test-Condition -Name 'Manifest HTTPS sources' -Passed (@($manifest | Where-Object source_url -notmatch '^https://').Count -eq 0) -Detail 'all HTTPS'
+Test-Condition -Name 'Manifest stable identities' -Passed (@($manifest | Where-Object { [string]::IsNullOrWhiteSpace($_.addon_id) }).Count -eq 0) -Detail 'all entries identified'
+Test-Condition -Name 'Manifest source repositories' -Passed (@($manifest | Where-Object { [string]::IsNullOrWhiteSpace($_.source_repo) }).Count -eq 0) -Detail 'all entries source-aware'
+Test-Condition -Name 'Manifest downgrade-safe policy' -Passed (@($manifest | Where-Object update_policy -ne 'source-preferred-no-downgrade').Count -eq 0) -Detail 'all entries protected'
 Test-Condition -Name 'Manifest author credits' -Passed (@($manifest | Where-Object { [string]::IsNullOrWhiteSpace($_.author) }).Count -eq 0) -Detail 'all entries credited'
 Test-Condition -Name 'Manifest project URLs' -Passed (@($manifest | Where-Object project_url -notmatch '^https://github\.com/').Count -eq 0) -Detail 'all entries linked'
 Test-Condition -Name 'Manifest license classifications' -Passed (@($manifest | Where-Object { $_.license_spdx -notin @('GPL-2.0', 'MIT', 'NOASSERTION') }).Count -eq 0) -Detail 'all entries classified'
@@ -100,7 +106,7 @@ Test-Condition -Name 'Logon trigger' -Passed ($taskScript -match '<LogonTrigger>
 Test-Condition -Name 'Wake event trigger' -Passed ($taskScript -match 'Power-Troubleshooter' -and $taskScript -match 'EventID=1') -Detail 'configured'
 Test-Condition -Name 'No recurring timer' -Passed ($taskScript -notmatch 'RepetitionInterval|MSFT_TaskTimeTrigger|<TimeTrigger>') -Detail 'none'
 Test-Condition -Name 'Hidden task execution' -Passed ($taskScript -match '<Hidden>true</Hidden>' -and $taskScript -match '-WindowStyle Hidden') -Detail 'configured'
-Test-Condition -Name 'Repair CLI refresh' -Passed ($watchdogScript -match 'Update-BdcliForRepair' -and $watchdogScript -match 'bdcli_checksums\.txt' -and $watchdogScript -match 'Get-FileHash') -Detail 'checksum verified'
+Test-Condition -Name 'Bundled-first repair CLI' -Passed ($watchdogScript -match 'Get-BdcliForRepair' -and $watchdogScript -match 'Using existing BetterDiscord CLI' -and $watchdogScript -match 'bdcli_checksums\.txt' -and $watchdogScript -match 'Get-FileHash') -Detail 'local first, checksum-verified download fallback'
 Test-Condition -Name 'Target profile resolver' -Passed ($profileResolver -match 'running Discord process' -and $profileResolver -match 'interactive Explorer process' -and $profileResolver -match 'only Windows profile with Discord Stable') -Detail 'multi-source detection configured'
 Test-Condition -Name 'Discord process-tree shutdown' -Passed ($profileResolver -match 'Get-BDAutoDiscordProcessIds' -and $profileResolver -match 'ParentProcessId' -and $installScript -match 'Get-BDAutoDiscordProcessIds' -and $watchdogScript -match 'Get-BDAutoDiscordProcessIds') -Detail 'hidden child processes included'
 Test-Condition -Name 'Explicit profile overrides' -Passed ($installScript -match 'TargetRoamingAppData' -and $watchdogScript -match 'TargetRoamingAppData' -and $taskScript -match 'TargetRoamingAppData') -Detail 'installer, watchdog, and task support overrides'
@@ -117,6 +123,10 @@ Test-Condition -Name 'Installer summary' -Passed ($installScript -match 'install
 Test-Condition -Name 'Status artifacts' -Passed ($installScript -match 'installed-version\.json' -and $installScript -match 'BD-AUTO-STATUS\.txt' -and $installerScript -match 'View BD-AUTO Status') -Detail 'version and status outputs configured'
 Test-Condition -Name 'Status command' -Passed ($watchdogScript -match '\[switch\]\$Status' -and $watchdogScript -match 'Show-Status') -Detail 'read-only status mode present'
 Test-Condition -Name 'Safe duplicate cleanup' -Passed ($installScript -match 'RemoveRecognizedDuplicates' -and $watchdogScript -match 'RemoveRecognizedDuplicates') -Detail 'recognized duplicates removed without pruning unrelated addons'
+Test-Condition -Name 'Downgrade-safe addon selection' -Passed ($syncScript -match 'preserved installed newer version' -and $syncScript -match 'source comparison was unknown' -and $syncScript -match 'fallback cache') -Detail 'installed/source/cache versions compared safely'
+Test-Condition -Name 'Addon audit mode' -Passed ($watchdogScript -match "Alias\('PluginAudit'\)" -and $watchdogScript -match 'AddonAudit' -and $syncScript -match 'AuditOnly') -Detail 'read-only report command available'
+Test-Condition -Name 'Discord update detection' -Passed ($watchdogScript -match 'Discord app path changed since the last successful repair' -and $watchdogScript -match 'Discord app write time changed since the last successful repair') -Detail 'path and write-time drift trigger repair'
+Test-Condition -Name 'Precise injection marker' -Passed ($watchdogScript -match 'BetterDiscord\.\{0,160\}data\.\{0,160\}betterdiscord') -Detail 'BetterDiscord data ASAR path required'
 Test-Condition -Name 'PowerShell 5.1 manifest enumeration' -Passed ($syncScript -match 'foreach \(\$entry in \$parsedManifest\)' -and $installScript -match 'foreach \(\$entry in \$parsedManifest\)') -Detail 'JSON arrays explicitly enumerated'
 Test-Condition -Name 'Non-elevated Discord relaunch' -Passed ($installScript -match 'Shell\.Application' -and $watchdogScript -match 'Shell\.Application') -Detail 'elevated repair delegates launch to Explorer'
 Test-Condition -Name 'No hidden UAC prompt' -Passed ($taskScript -match '-NoElevationPrompt' -and $watchdogScript -match 'repair-requires-elevation') -Detail 'scheduled checks defer elevation to manual shortcut'
@@ -137,6 +147,9 @@ Test-Condition -Name 'Clean tracked files' -Passed ($forbiddenTracked.Count -eq 
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\Test-Compatibility.ps1')
 Test-Condition -Name 'Reduced Windows simulation' -Passed ($LASTEXITCODE -eq 0) -Detail 'custom branding and stripped components degrade safely'
+
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\Test-AddonSync.ps1')
+Test-Condition -Name 'Addon synchronization scenarios' -Passed ($LASTEXITCODE -eq 0) -Detail 'downgrade, upgrade, cache fallback, and unknown-version behavior validated'
 
 if ($failures.Count -gt 0) {
   Write-Host "`nRepository validation failed:"

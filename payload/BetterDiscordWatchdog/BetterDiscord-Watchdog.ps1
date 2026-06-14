@@ -1,6 +1,8 @@
 [CmdletBinding()]
 param(
   [switch]$Status,
+  [Alias('PluginAudit')]
+  [switch]$AddonAudit,
   [switch]$DryRun,
   [switch]$ForceRepair,
   [switch]$ReopenDiscord,
@@ -57,6 +59,7 @@ $StatePath = Join-Path $RuntimeRoot 'state.json'
 $ManifestPath = Join-Path $RootDir 'addons.manifest.json'
 $AddonSyncPath = Join-Path $RootDir 'Sync-BetterDiscordAddons.ps1'
 $AddonCacheRoot = Join-Path $RootDir 'BetterDiscord'
+$AddonReportPath = Join-Path $RuntimeRoot 'addon-audit.json'
 $VersionFilePath = Join-Path $RootDir 'VERSION'
 $InstalledVersionPath = Join-Path $RuntimeRoot 'installed-version.json'
 $ReleaseUrl = $null
@@ -127,6 +130,7 @@ function Show-Status {
     "Scheduled task: $($taskStatus.status)"
     "Scheduled task detail: $($taskStatus.message)"
     "Latest log path: $(if ($latestLog) { $latestLog.FullName } else { $LogPath })"
+    "Addon audit path: $AddonReportPath"
     "Release URL: $releaseUrl"
     "Installed-at: $(if ($installedVersion) { $installedVersion.installed_at } else { 'unknown' })"
   ) | ForEach-Object { Write-Host $_ }
@@ -239,10 +243,9 @@ function Test-BetterDiscordInjection {
   if (-not (Test-Path -LiteralPath $coreIndex)) { return $false }
   try {
     $text = Get-Content -LiteralPath $coreIndex -Raw
-    $hasAsar = $text -match '(?i)betterdiscord\.asar'
-    $hasBetterDiscordPath = $text -match '(?i)BetterDiscord'
+    $hasAsar = $text -match '(?is)BetterDiscord.{0,160}data.{0,160}betterdiscord\.asar'
     $hasInjectionMarker = $text -match "(?i)BetterDiscord'?s Injection Script"
-    return [bool]($hasAsar -and ($hasBetterDiscordPath -or $hasInjectionMarker))
+    return [bool]($hasAsar -and $hasInjectionMarker)
   } catch {
     Write-Log "Could not inspect Discord core index. $_" 'WARN'
     return $false
@@ -261,8 +264,13 @@ function Get-BdcliPath {
   return $null
 }
 
-function Update-BdcliForRepair {
+function Get-BdcliForRepair {
   $existingCli = Get-BdcliPath
+  if ($existingCli -and (Test-Path -LiteralPath $existingCli)) {
+    Write-Log "Using existing BetterDiscord CLI: $existingCli"
+    return $existingCli
+  }
+
   $binDir = Join-Path $RootDir 'bin'
   $targetCli = Join-Path $binDir 'bdcli.exe'
   $tempRoot = Join-Path $env:TEMP ("bd-auto-cli-{0}" -f [guid]::NewGuid().ToString('N'))
@@ -272,7 +280,7 @@ function Update-BdcliForRepair {
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $headers = @{ 'User-Agent' = 'BD-AUTO Watchdog' }
-    Write-Log 'Refreshing the official BetterDiscord CLI before repair.'
+    Write-Log 'No local BetterDiscord CLI was found; downloading the official checksum-verified CLI.'
     $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/BetterDiscord/cli/releases/latest' -Headers $headers
     $asset = $release.assets |
       Where-Object { $_.name -match '(?i)bdcli_.*_windows_amd64\.zip$' -or $_.name -match '(?i)windows.*amd64.*\.zip$' } |
@@ -309,11 +317,7 @@ function Update-BdcliForRepair {
     Write-Log "BetterDiscord CLI $($release.tag_name) is ready."
     return $targetCli
   } catch {
-    if ($existingCli -and (Test-Path -LiteralPath $existingCli)) {
-      Write-Log "CLI refresh failed; using existing repair binary. $_" 'WARN'
-      return $existingCli
-    }
-    throw "BetterDiscord CLI refresh failed and no existing binary is available. $_"
+    throw "BetterDiscord CLI download failed and no existing binary is available. $_"
   } finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
@@ -397,7 +401,7 @@ function Start-Discord {
 }
 
 function Invoke-AddonSync {
-  param([switch]$Verify)
+  param([switch]$Verify, [switch]$Audit)
 
   if (-not (Test-Path -LiteralPath $AddonSyncPath)) { throw "Addon sync script missing: $AddonSyncPath" }
   $arguments = @(
@@ -406,13 +410,20 @@ function Invoke-AddonSync {
     '-ManifestPath', $ManifestPath,
     '-ActiveRoot', $ActiveBDRoot,
     '-CacheRoot', $AddonCacheRoot,
+    '-BackupRoot', (Join-Path $BackupRoot 'addon-sync'),
+    '-ReportPath', $AddonReportPath,
     '-RemoveRecognizedDuplicates'
   )
   if ($Verify) { $arguments += '-VerifyOnly' }
+  if ($Audit) { $arguments += '-AuditOnly' }
   & powershell.exe @arguments | ForEach-Object { Write-Log "$_" }
   if ($LASTEXITCODE -ne 0) {
     throw "Addon sync exited with code $LASTEXITCODE"
   }
+  if (Test-Path -LiteralPath $AddonReportPath) {
+    return Get-Content -LiteralPath $AddonReportPath -Raw | ConvertFrom-Json
+  }
+  return $null
 }
 
 function New-RepairBackup {
@@ -561,6 +572,12 @@ if ($Status) {
   Show-Status
   exit 0
 }
+if ($AddonAudit) {
+  $audit = Invoke-AddonSync -Audit
+  Write-Host "Addon audit report: $AddonReportPath"
+  Write-Host "Addons: $($audit.addon_count); problems: $($audit.problem_count)"
+  exit 0
+}
 Repair-WatchdogTaskDefinition
 if ($StartupDelaySeconds -gt 0) {
   Write-Log "Startup delay: $StartupDelaySeconds second(s)."
@@ -587,8 +604,9 @@ if (-not $stableSignature) {
 
 $injectionInstalled = Test-BetterDiscordInjection -DiscordAppPath $stableSignature.Path
 $addonVerificationFailed = $false
+$addonReport = $null
 try {
-  Invoke-AddonSync -Verify:$DryRun
+  $addonReport = Invoke-AddonSync -Verify:$DryRun
 } catch {
   $addonVerificationFailed = $true
   Write-Log "Addon verification/sync failed: $_" 'ERROR'
@@ -598,6 +616,18 @@ $reasons = New-Object System.Collections.Generic.List[string]
 if ($ForceRepair) { $reasons.Add('ForceRepair specified') }
 if (-not $injectionInstalled) { $reasons.Add('BetterDiscord injection missing') }
 if (-not (Test-Path -LiteralPath (Join-Path $ActiveData 'betterdiscord.asar'))) { $reasons.Add('BetterDiscord runtime missing') }
+if (
+  $state.last_successful_repair_discord_app_path -and
+  $state.last_successful_repair_discord_app_path -ne $stableSignature.Path
+) {
+  $reasons.Add('Discord app path changed since the last successful repair')
+}
+if (
+  $state.last_successful_repair_discord_app_write_time -and
+  $state.last_successful_repair_discord_app_write_time -ne $stableSignature.WriteTime
+) {
+  $reasons.Add('Discord app write time changed since the last successful repair')
+}
 if ($addonVerificationFailed) {
   $reasons.Add($(if ($DryRun) { 'Addon verification failed' } else { 'Addon synchronization failed' }))
 }
@@ -612,6 +642,11 @@ $state.last_check_time = (Get-Date).ToString('o')
 $state.last_discord_app_path = $stableSignature.Path
 $state.last_discord_app_write_time = $stableSignature.WriteTime
 $state.last_check_result = if ($repairNeeded) { 'repair-needed' } else { 'healthy' }
+$state.last_addon_report_path = $AddonReportPath
+if ($addonReport) {
+  $state.last_addon_changed_count = $addonReport.changed_count
+  $state.last_addon_problem_count = $addonReport.problem_count
+}
 
 if (-not $repairNeeded) {
   Save-State $state
@@ -623,16 +658,6 @@ if ($DryRun) {
   Save-State $state
   Write-Log 'Dry run complete; no changes were made.'
   exit 0
-}
-
-if (-not (Test-BDAutoAdministrator) -and -not $ElevatedRepair) {
-  if ($NoElevationPrompt) {
-    $state.last_check_result = 'repair-requires-elevation'
-    Save-State $state
-    Write-Log 'Repair requires administrator approval. Hidden automation will not display UAC; use the Repair BetterDiscord shortcut.' 'WARN'
-    exit 2
-  }
-  Invoke-ElevatedRepair
 }
 
 if ($addonVerificationFailed) {
@@ -648,7 +673,7 @@ if ($wasRunning) {
   Write-Log ("Stopped Discord process IDs: {0}" -f (($stopped.Id) -join ', '))
 }
 
-$bdcli = Update-BdcliForRepair
+$bdcli = Get-BdcliForRepair
 
 $output = & $bdcli install --path $stableSignature.Path 2>&1 | Out-String
 Write-Log "bdcli output: $output"
@@ -657,16 +682,27 @@ if ($installExitCode -ne 0) {
   if ($wasRunning -and -not $NoReopenDiscord) { [void](Start-Discord) }
   $state.last_repair_result = "bdcli-exit-$installExitCode"
   Save-State $state
+  if (-not (Test-BDAutoAdministrator) -and -not $ElevatedRepair) {
+    if ($NoElevationPrompt) {
+      $state.last_check_result = 'repair-requires-elevation'
+      Save-State $state
+      Write-Log 'Non-elevated repair failed. Hidden automation will not display UAC; use the Repair BetterDiscord shortcut.' 'WARN'
+      exit 2
+    }
+    Write-Log 'Non-elevated repair failed; retrying once with Windows UAC approval.' 'WARN'
+    Invoke-ElevatedRepair
+  }
   throw "BetterDiscord repair failed with exit code $installExitCode"
 }
 
-Invoke-AddonSync
+$addonReport = Invoke-AddonSync
 $shouldReopen = -not $NoReopenDiscord -and ($wasRunning -or $ReopenDiscord)
 $reopened = if ($shouldReopen) { Start-Discord } else { $false }
 $postInjection = Test-BetterDiscordInjection -DiscordAppPath $stableSignature.Path
 
 $state.last_repair_time = (Get-Date).ToString('o')
 $state.last_repair_result = if ($postInjection) { 'completed' } else { 'post-repair-injection-missing' }
+$state.last_check_result = if ($postInjection) { 'healthy' } else { 'repair-failed-verification' }
 $state.last_backup_path = $backupPath
 $state.last_successful_repair_discord_app_path = $stableSignature.Path
 $state.last_successful_repair_discord_app_write_time = $stableSignature.WriteTime
@@ -674,6 +710,13 @@ $state.discord_was_running_before_repair = $wasRunning
 $state.discord_reopen_attempted = $shouldReopen
 $state.discord_reopen_success = $reopened
 $state.post_repair_injection_installed = $postInjection
+$state.repair_method = 'bdcli'
+$state.bdcli_path = $bdcli
+$state.last_addon_report_path = $AddonReportPath
+if ($addonReport) {
+  $state.last_addon_changed_count = $addonReport.changed_count
+  $state.last_addon_problem_count = $addonReport.problem_count
+}
 $state.active_plugin_count = Get-Count -Path $ActivePlugins -Filter '*.plugin.js'
 $state.active_theme_count = Get-Count -Path $ActiveThemes -Filter '*.theme.css'
 $state.target_user = $TargetProfile.UserName

@@ -20,7 +20,7 @@ the BetterDiscord CLI, Inno Setup, and all plugins/themes remain subject to
 their own licenses and copyrights.
 
 The public setup embeds a checksum-verified official BetterDiscord CLI but
-does not embed plugin/theme files. Add-ons are downloaded directly from pinned
+does not embed plugin/theme files. Add-ons are downloaded directly from documented
 upstream locations during installation. Three configured
 add-on repositories currently have no detected license; absence of a license
 does not grant redistribution rights.

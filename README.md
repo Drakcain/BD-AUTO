@@ -10,6 +10,8 @@ BD-AUTO-Setup.exe
 
 No PowerShell knowledge or manual file copying is required.
 
+The release EXE is the preferred friend-facing installer. A portable source bundle can also be started by double-clicking `Install-BD-AUTO.cmd`.
+
 ## What It Does
 
 - Installs to `C:\Tools\BD-AUTO`.
@@ -17,10 +19,13 @@ No PowerShell knowledge or manual file copying is required.
 - Uses the bundled CLI first, so winget and Microsoft Store/App Installer are not required.
 - Installs or repairs BetterDiscord for Discord Stable.
 - Downloads and enables the addons listed in `payload/addons.manifest.json`.
+- Compares installed, upstream, and cached addon versions before changing a file.
+- Preserves a newer installed addon instead of downgrading it to an older manifest or cache version.
+- Creates a backup before replacing an installed addon.
 - Avoids duplicate plugin/theme source files.
 - Creates a hidden scheduled task that checks once after sign-in and once after resume from sleep when Task Scheduler supports it.
 - Keeps desktop and Start Menu repair shortcuts available when scheduled automation is disabled or stripped.
-- Refreshes the checksum-verified official BetterDiscord CLI only when a repair is required.
+- Uses the bundled checksum-verified official BetterDiscord CLI first and downloads one only if no usable CLI exists.
 - Closes Discord before a required repair and relaunches it afterward.
 - Retains the three newest local repair backups.
 
@@ -35,6 +40,13 @@ There is no recurring five-minute poll and no background process that runs conti
 
 The EXE is currently unsigned. Windows SmartScreen may show **Windows protected your PC**. Select **More info**, verify that the file came from this repository's Releases page, and select **Run anyway**.
 
+For a portable source ZIP instead:
+
+1. Extract the ZIP.
+2. Double-click `Install-BD-AUTO.cmd`.
+3. Accept UAC if Windows requests it.
+4. Wait for setup to finish and open Discord.
+
 The UAC prompt is expected because setup installs to `C:\Tools` and configures optional scheduled automation. Code signing can improve publisher trust and SmartScreen reputation, but it does not remove UAC. See [SIGNING.md](SIGNING.md).
 
 ## Manual Repair
@@ -46,6 +58,7 @@ Use either shortcut created by setup:
 
 The repair shortcut runs the watchdog with `-ForceRepair -RestoreStash -ReopenDiscord`.
 Windows may request UAC approval when a repair must stop an elevated Discord process or modify an installation that requires administrator rights.
+The hidden scheduled check first attempts the normal per-user repair and never opens a surprise UAC prompt. Manual repair requests UAC only if the non-elevated CLI attempt fails.
 
 The Start Menu also contains:
 
@@ -93,6 +106,24 @@ The active files must be under the same Windows profile that runs Discord:
 <UserProfile>\AppData\Roaming\BetterDiscord\plugins
 <UserProfile>\AppData\Roaming\BetterDiscord\themes
 ```
+
+Run a read-only addon source/version audit with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -AddonAudit
+```
+
+The detailed result is written to `C:\Tools\BD-AUTO\runtime\addon-audit.json`.
+
+### BDFDB Repeatedly Requests An Update
+
+BDFDB is DevilBro's library plugin and is required by many DevilBro plugins. If it repeatedly requests the same update:
+
+1. Run the addon audit command above.
+2. Check the `mwittrien-bdfdb` entry in `runtime\addon-audit.json`.
+3. Confirm `downgrade_risk` is `false` and compare the installed, cached, and upstream versions.
+
+BD-AUTO v1.1.0 preserves a newer installed BDFDB, prefers the Mwittrien upstream file when it is newer, and uses the local cache only as fallback. It does not delete BDFDB settings or `0BDFDB.data.json`.
 
 Setup is intentionally bound to one Discord Windows profile. If UAC requests credentials for a different administrator account, BD-AUTO still performs Discord, BetterDiscord, add-on, and relaunch work as the original desktop user, then registers the elevated scheduled task for that user's SID.
 
@@ -147,7 +178,7 @@ BetterDiscord is a third-party Discord client modification. Discord's current Te
 
 BD-AUTO does not include Discord and does not bypass authentication, security controls, subscriptions, paid features, or account restrictions.
 
-Third-party plugins and themes are not embedded in the setup executable. They are downloaded from pinned upstream locations during installation and remain the property of their original authors.
+Third-party plugins and themes are not embedded in the setup executable. They are downloaded from the manifest's documented upstream repositories during installation and remain the property of their original authors. Manifest versions are audit baselines, not downgrade targets.
 
 ## Credits And Licensing
 
@@ -170,3 +201,6 @@ Three configured add-on repositories currently have no detected license. They ar
 - Added repair backups with bounded retention.
 - Added repository validation, secret scanning, Inno Setup packaging, and GitHub Actions releases.
 - Added a compatibility preflight, self-contained verified CLI packaging, graceful scheduled-task fallback, and installation summaries for stock and customized Windows builds.
+- Replaced exact manifest-version enforcement with source-aware, downgrade-safe addon selection and per-file backups.
+- Added a read-only addon audit report, Discord app path/write-time repair detection, and bundled-first bdcli repairs.
+- Added regression scenarios for the BDFDB downgrade loop and a double-click source bootstrapper.

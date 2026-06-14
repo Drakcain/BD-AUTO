@@ -113,6 +113,7 @@ function Write-InstalledVersionFiles {
     betterdiscord_injection_verified = $InstallStatus.InjectionVerified
     managed_plugins = $InstallStatus.ManagedPlugins
     managed_themes = $InstallStatus.ManagedThemes
+    addon_audit_report = (Join-Path $runtimeDir 'addon-audit.json')
     scheduled_task_installed = $scheduledTaskInstalled
     scheduled_task_status = $InstallStatus.ScheduledTask
     scheduled_task_message = if ($taskStatus) { $taskStatus.message } else { $null }
@@ -390,7 +391,10 @@ function Install-BetterDiscord {
   $injectionVerified = $false
   if (Test-Path -LiteralPath $coreIndex) {
     $coreText = Get-Content -LiteralPath $coreIndex -Raw
-    $injectionVerified = $coreText -match '(?i)betterdiscord\.asar'
+    $injectionVerified = (
+      $coreText -match '(?is)BetterDiscord.{0,160}data.{0,160}betterdiscord\.asar' -and
+      $coreText -match "(?i)BetterDiscord'?s Injection Script"
+    )
   }
   $script:InstallStatus.InjectionVerified = $injectionVerified
   if (-not $injectionVerified) {
@@ -441,8 +445,18 @@ function Start-Discord {
 
 function Install-WatchdogTask {
   if ($SkipTaskInstall) {
-    Write-InstallLog 'Scheduled task install skipped.'
-    $script:InstallStatus.ScheduledTask = 'deferred'
+    $existingTaskStatusPath = Join-Path $TargetRoot 'runtime\task-status.json'
+    $existingTaskStatus = $null
+    if (Test-Path -LiteralPath $existingTaskStatusPath) {
+      try { $existingTaskStatus = Get-Content -LiteralPath $existingTaskStatusPath -Raw | ConvertFrom-Json } catch { }
+    }
+    if ($existingTaskStatus -and $existingTaskStatus.status -in @('installed', 'installed-logon-only')) {
+      $script:InstallStatus.ScheduledTask = $existingTaskStatus.status
+      Write-InstallLog "Scheduled task install skipped; preserving existing status: $($existingTaskStatus.status)."
+    } else {
+      Write-InstallLog 'Scheduled task install skipped; elevated installer stage will register it.'
+      $script:InstallStatus.ScheduledTask = 'deferred'
+    }
     return $true
   }
 
@@ -514,6 +528,8 @@ function Sync-AddonManifest {
     -ManifestPath $manifestPath `
     -ActiveRoot $TargetProfile.BetterDiscordRoot `
     -CacheRoot (Join-Path $TargetRoot 'BetterDiscord') `
+    -BackupRoot (Join-Path $TargetRoot 'runtime\backups\addon-sync') `
+    -ReportPath (Join-Path $TargetRoot 'runtime\addon-audit.json') `
     -RemoveRecognizedDuplicates | Out-Host
   if ($LASTEXITCODE -ne 0) {
     throw "Addon sync failed with exit code $LASTEXITCODE"
@@ -581,6 +597,7 @@ function Save-InstallSummary {
     '',
     "Status file: $TargetRoot\BD-AUTO-STATUS.txt",
     "Installed version JSON: $TargetRoot\runtime\installed-version.json",
+    "Addon audit JSON: $TargetRoot\runtime\addon-audit.json",
     "Logs: $TargetRoot\logs and $TargetRoot\runtime\logs",
     'Manual fallback: run the Repair BetterDiscord desktop or Start Menu shortcut.'
   ) -join [Environment]::NewLine

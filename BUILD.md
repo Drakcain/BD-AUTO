@@ -37,11 +37,12 @@ The validation checks:
 - bundled checksum-verified BetterDiscord CLI staging
 - customized/stripped Windows compatibility reporting
 - graceful manual fallback when Task Scheduler is unavailable
+- source-aware addon version selection and BDFDB downgrade regression scenarios
 
 ## Compile
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1 -Version 1.0.5
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build.ps1
 ```
 
 Expected output:
@@ -68,14 +69,16 @@ The build script validates the repository, downloads the latest official BetterD
 12. Uninstall BD-AUTO and verify the task is removed.
 13. Confirm `runtime\compatibility.json` and `runtime\install-summary.txt` accurately describe the machine.
 14. Confirm the installer still succeeds when winget is unavailable.
+15. Run the addon audit and confirm no installed addon is selected for downgrade.
+16. Confirm `runtime\addon-audit.json` records installed, cached, and upstream versions.
 
 ## GitHub Release
 
 Pushing a tag matching `v*` runs `.github/workflows/build.yml`, builds the EXE, and creates a GitHub Release:
 
 ```powershell
-git tag v1.0.5
-git push origin v1.0.5
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 ## Do Not Commit
