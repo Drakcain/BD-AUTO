@@ -126,6 +126,9 @@ function Write-InstalledVersionFiles {
     windows_build = $Compatibility.WindowsBuild
     compatibility_mode = if ($Compatibility.CustomWindowsSuspected) { 'custom-windows-detected' } else { 'standard-windows' }
     custom_windows_detected = [bool]$Compatibility.CustomWindowsSuspected
+    uac_enabled = $Compatibility.UacEnabled
+    uac_elevation_mode = $Compatibility.UacElevationMode
+    uac_consent_policy = $Compatibility.UacConsentPromptBehaviorAdmin
     failure_reason = $InstallStatus.FailureReason
     latest_log_path = $InstallStatus.LatestLogPath
   }
@@ -586,6 +589,7 @@ function Save-InstallSummary {
     '',
     "Windows: $($Compatibility.WindowsCaption) $($Compatibility.WindowsDisplayVersion) build $($Compatibility.WindowsBuild)",
     "PowerShell: $($Compatibility.PowerShellVersion)",
+    "UAC/elevation mode: $($Compatibility.UacElevationMode)",
     "Target user: $($TargetProfile.UserName)",
     "Install path: $TargetRoot",
     "Discord: $($TargetProfile.DiscordRoot)",

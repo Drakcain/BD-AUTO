@@ -23,6 +23,9 @@ $reduced = Get-BDAutoCompatibilityReport -TargetProfile $profile -RootPath $repo
   DefenderServicePresent = $false
   SecurityHealthServicePresent = $false
   BrandingText = 'Ghost Spectre Superlite'
+  EnableLUA = 1
+  ConsentPromptBehaviorAdmin = 0
+  PromptOnSecureDesktop = 1
 }
 
 if (-not $reduced.CustomWindowsSuspected) {
@@ -34,5 +37,34 @@ if ($reduced.TaskSchedulerAvailable) {
 if ($reduced.CustomWindowsIndicators.Count -lt 2) {
   throw 'Reduced/custom Windows indicators were not recorded.'
 }
+if ($reduced.UacElevationMode -ne 'auto-elevate-administrators') {
+  throw 'Ghost Spectre-style automatic elevation policy was not detected.'
+}
 
-Write-Host '[PASS] Reduced/custom Windows compatibility simulation'
+$stock = Get-BDAutoCompatibilityReport -TargetProfile $profile -RootPath $repoRoot -CapabilityOverrides @{
+  CimAvailable = $true
+  TaskServicePresent = $true
+  TaskServiceStatus = 'Running'
+  TaskServiceStartType = 'Automatic'
+  TaskCmdletsPresent = $true
+  DefenderServicePresent = $true
+  SecurityHealthServicePresent = $true
+  BrandingText = 'Microsoft Windows 11 Pro'
+  EnableLUA = 1
+  ConsentPromptBehaviorAdmin = 5
+  PromptOnSecureDesktop = 1
+}
+if ($stock.UacElevationMode -ne 'prompt-according-to-windows-policy') {
+  throw 'Stock Windows UAC prompt policy was not detected.'
+}
+
+$uacDisabled = Get-BDAutoCompatibilityReport -TargetProfile $profile -RootPath $repoRoot -CapabilityOverrides @{
+  EnableLUA = 0
+  ConsentPromptBehaviorAdmin = 0
+  PromptOnSecureDesktop = 0
+}
+if ($uacDisabled.UacElevationMode -ne 'uac-disabled') {
+  throw 'Disabled UAC policy was not detected.'
+}
+
+Write-Host '[PASS] Reduced/custom Windows and UAC policy simulations'

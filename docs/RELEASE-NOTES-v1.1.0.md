@@ -28,6 +28,7 @@
 - Keeps `BD-AUTO-Setup.exe` as the preferred friend-facing installer.
 - Writes addon decisions to `C:\Tools\BD-AUTO\runtime\addon-audit.json`.
 - Retains hidden sign-in and resume triggers without a recurring background timer.
+- Reports stock UAC prompting, administrator auto-elevation policies, and disabled-UAC systems without changing Windows security policy.
 
 ## Validation
 

@@ -49,6 +49,13 @@ For a portable source ZIP instead:
 
 The UAC prompt is expected because setup installs to `C:\Tools` and configures optional scheduled automation. Code signing can improve publisher trust and SmartScreen reputation, but it does not remove UAC. See [SIGNING.md](SIGNING.md).
 
+BD-AUTO follows the machine's Windows elevation policy:
+
+- Stock Windows normally displays one UAC confirmation.
+- Customized systems that suppress administrator consent prompts may elevate setup automatically.
+- Systems with UAC disabled are reported explicitly in `runtime\compatibility.json`.
+- BD-AUTO does not disable UAC or bypass Windows security policy.
+
 ## Manual Repair
 
 Use either shortcut created by setup:
@@ -140,6 +147,8 @@ The installer does not fail or remove a healthy BetterDiscord installation solel
 ### Customized Or Stripped Windows
 
 BD-AUTO supports stock Windows 10/11 x64 and provides best-effort support for Ghost Spectre and other customized builds. It detects missing management, security, and scheduling components and records them in `runtime\compatibility.json`.
+
+The compatibility report also records `UacElevationMode`, allowing support logs to distinguish normal stock-Windows prompting from auto-elevation or disabled-UAC configurations.
 
 BD-AUTO does not re-enable stripped services or bypass Windows security settings. Core installation and the manual repair shortcut require Windows PowerShell, administrator approval, Discord Stable, and the bundled BetterDiscord CLI. Wake and sign-in automation depends on Task Scheduler.
 

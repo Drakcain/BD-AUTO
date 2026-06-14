@@ -48,6 +48,49 @@ function Get-BDAutoInteractiveUser {
   return $env:USERNAME
 }
 
+function Get-BDAutoUacSnapshot {
+  param([hashtable]$CapabilityOverrides)
+
+  $enableLua = $null
+  $consentPromptBehaviorAdmin = $null
+  $promptOnSecureDesktop = $null
+  try {
+    $policy = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction Stop
+    $enableLua = $policy.EnableLUA
+    $consentPromptBehaviorAdmin = $policy.ConsentPromptBehaviorAdmin
+    $promptOnSecureDesktop = $policy.PromptOnSecureDesktop
+  } catch { }
+
+  if ($CapabilityOverrides) {
+    if ($CapabilityOverrides.ContainsKey('EnableLUA')) {
+      $enableLua = [int]$CapabilityOverrides.EnableLUA
+    }
+    if ($CapabilityOverrides.ContainsKey('ConsentPromptBehaviorAdmin')) {
+      $consentPromptBehaviorAdmin = [int]$CapabilityOverrides.ConsentPromptBehaviorAdmin
+    }
+    if ($CapabilityOverrides.ContainsKey('PromptOnSecureDesktop')) {
+      $promptOnSecureDesktop = [int]$CapabilityOverrides.PromptOnSecureDesktop
+    }
+  }
+
+  $enabled = $enableLua -eq 1
+  $mode = if (-not $enabled) {
+    'uac-disabled'
+  } elseif ($consentPromptBehaviorAdmin -eq 0) {
+    'auto-elevate-administrators'
+  } else {
+    'prompt-according-to-windows-policy'
+  }
+
+  return [pscustomobject]@{
+    Enabled = $enabled
+    EnableLUA = $enableLua
+    ConsentPromptBehaviorAdmin = $consentPromptBehaviorAdmin
+    PromptOnSecureDesktop = $promptOnSecureDesktop
+    ElevationMode = $mode
+  }
+}
+
 function Get-BDAutoCompatibilityReport {
   [CmdletBinding()]
   param(
@@ -88,6 +131,7 @@ function Get-BDAutoCompatibilityReport {
   $taskService = Get-BDAutoServiceSnapshot -Name 'Schedule'
   $defenderService = Get-BDAutoServiceSnapshot -Name 'WinDefend'
   $securityHealthService = Get-BDAutoServiceSnapshot -Name 'SecurityHealthService'
+  $uac = Get-BDAutoUacSnapshot -CapabilityOverrides $CapabilityOverrides
   $taskCmdletsPresent = [bool](
     (Get-Command Register-ScheduledTask -ErrorAction SilentlyContinue) -and
     (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)
@@ -154,8 +198,16 @@ function Get-BDAutoCompatibilityReport {
   if (-not $taskService.Present) { $reducedIndicators.Add('Task Scheduler service unavailable') }
   elseif ($taskService.StartType -eq 'Disabled') { $reducedIndicators.Add('Task Scheduler service disabled') }
   if (-not $taskCmdletsPresent) { $reducedIndicators.Add('ScheduledTasks PowerShell module unavailable') }
-  if (-not $defenderService.Present -and -not $securityHealthService.Present) {
-    $reducedIndicators.Add('Windows security services unavailable')
+  if (-not $defenderService.Present) {
+    $reducedIndicators.Add('Microsoft Defender service unavailable')
+  }
+  if (-not $securityHealthService.Present) {
+    $reducedIndicators.Add('Windows Security Health service unavailable')
+  }
+  if (-not $uac.Enabled) {
+    $reducedIndicators.Add('User Account Control disabled')
+  } elseif ($uac.ConsentPromptBehaviorAdmin -eq 0) {
+    $reducedIndicators.Add('administrator elevation prompts suppressed by Windows policy')
   }
 
   $customIndicators = New-Object System.Collections.Generic.List[string]
@@ -175,6 +227,11 @@ function Get-BDAutoCompatibilityReport {
     WindowsArchitecture = $osArchitecture
     PowerShellVersion = $PSVersionTable.PSVersion.ToString()
     ProcessElevated = Test-BDAutoAdministrator
+    UacEnabled = $uac.Enabled
+    UacEnableLUA = $uac.EnableLUA
+    UacConsentPromptBehaviorAdmin = $uac.ConsentPromptBehaviorAdmin
+    UacPromptOnSecureDesktop = $uac.PromptOnSecureDesktop
+    UacElevationMode = $uac.ElevationMode
     CurrentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     InteractiveUser = Get-BDAutoInteractiveUser
     TargetUser = $TargetProfile.UserName
@@ -211,6 +268,7 @@ function Write-BDAutoCompatibilityLog {
 
   & $WriteLog "Compatibility: Windows=$($Report.WindowsCaption), version=$($Report.WindowsVersion), build=$($Report.WindowsBuild), edition=$($Report.WindowsEdition)"
   & $WriteLog "Compatibility: PowerShell=$($Report.PowerShellVersion), elevated=$($Report.ProcessElevated), CIM=$($Report.CimAvailable)"
+  & $WriteLog "Compatibility: UAC enabled=$($Report.UacEnabled), elevation mode=$($Report.UacElevationMode), consent policy=$($Report.UacConsentPromptBehaviorAdmin), secure desktop=$($Report.UacPromptOnSecureDesktop)"
   & $WriteLog "Compatibility: current user=$($Report.CurrentUser), interactive user=$($Report.InteractiveUser), target user=$($Report.TargetUser)"
   & $WriteLog "Compatibility: Task Scheduler available=$($Report.TaskSchedulerAvailable), service=$($Report.TaskSchedulerServiceStatus)/$($Report.TaskSchedulerServiceStartType), cmdlets=$($Report.ScheduledTaskCmdletsPresent)"
   & $WriteLog "Compatibility: bundled bdcli=$($Report.BundledBdcliPresent), winget optional=$($Report.WingetPresent), GUI fallback=$($Report.GuiFallbackPresent)"

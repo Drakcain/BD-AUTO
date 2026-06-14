@@ -117,6 +117,7 @@ Test-Condition -Name 'Target-bound task action' -Passed ($taskScript -match '-Ta
 Test-Condition -Name 'Bundled CLI staging' -Passed ($buildScript -match 'Add-VerifiedBdcliToPayload' -and $buildScript -match 'bdcli_checksums\.txt' -and $buildScript -match 'MyPayloadDir') -Detail 'verified CLI embedded at build time'
 Test-Condition -Name 'winget optional at runtime' -Passed ($installScript -notmatch 'winget install' -and $compatibilityScript -match 'WingetPresent') -Detail 'detected but never required'
 Test-Condition -Name 'Compatibility preflight' -Passed ($compatibilityScript -match 'CustomWindowsSuspected' -and $compatibilityScript -match 'TaskSchedulerAvailable' -and $installScript -match 'compatibility\.json' -and $watchdogScript -match 'compatibility\.json') -Detail 'stock and reduced-component Windows reported'
+Test-Condition -Name 'Adaptive UAC reporting' -Passed ($compatibilityScript -match 'UacElevationMode' -and $compatibilityScript -match 'auto-elevate-administrators' -and $compatibilityScript -match 'prompt-according-to-windows-policy' -and $compatibilityScript -match 'uac-disabled') -Detail 'stock, auto-elevate, and disabled-UAC modes distinguished'
 Test-Condition -Name 'Graceful task fallback' -Passed ($taskScript -match 'installed-logon-only' -and $taskScript -match 'task-status\.json' -and $installerScript -match 'Scheduled repair automation could not be installed') -Detail 'task failure does not abort core setup'
 Test-Condition -Name 'Always-present repair shortcuts' -Passed ($installerScript -match '\{autodesktop\}\\Repair BetterDiscord' -and $installerScript -match '\{group\}\\Repair BetterDiscord' -and $installerScript -match '-RestoreStash') -Detail 'desktop and Start Menu fallback configured'
 Test-Condition -Name 'Installer summary' -Passed ($installScript -match 'install-summary\.txt' -and $installerScript -match 'Installation Summary') -Detail 'machine-readable and user-facing results configured'
@@ -146,7 +147,7 @@ $forbiddenTracked = @($trackedFiles | Where-Object {
 Test-Condition -Name 'Clean tracked files' -Passed ($forbiddenTracked.Count -eq 0) -Detail "$($forbiddenTracked.Count) forbidden tracked file(s)"
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\Test-Compatibility.ps1')
-Test-Condition -Name 'Reduced Windows simulation' -Passed ($LASTEXITCODE -eq 0) -Detail 'custom branding and stripped components degrade safely'
+Test-Condition -Name 'Reduced Windows simulation' -Passed ($LASTEXITCODE -eq 0) -Detail 'custom branding, stripped components, and UAC policies degrade safely'
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\Test-AddonSync.ps1')
 Test-Condition -Name 'Addon synchronization scenarios' -Passed ($LASTEXITCODE -eq 0) -Detail 'downgrade, upgrade, cache fallback, and unknown-version behavior validated'
