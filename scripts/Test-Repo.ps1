@@ -24,6 +24,7 @@ $requiredFiles = @(
   'THIRD-PARTY-NOTICES.md',
   'SIGNING.md',
   'SECURITY.md',
+  'assets\branding\bd-auto-brand-banner.svg',
   '.gitignore',
   'installer\BD-AUTO.iss',
   'payload\Install-BD-AUTO.ps1',
@@ -35,6 +36,7 @@ $requiredFiles = @(
   'payload\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1',
   'payload\BetterDiscordWatchdog\Install-BetterDiscord-WatchdogTask.ps1',
   'payload\BetterDiscordWatchdog\Remove-BetterDiscord-WatchdogTask.ps1',
+  'scripts\Generate-BrandingAssets.ps1',
   'scripts\Test-Compatibility.ps1',
   'scripts\Test-AddonSync.ps1',
   'docs\RELEASE-NOTES-v1.1.0.md'
@@ -78,11 +80,28 @@ Test-Condition -Name 'Discord terms disclosure' -Passed ($thirdPartyNotice -matc
 $installerScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'installer\BD-AUTO.iss') -Raw
 $buildScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts\Build.ps1') -Raw
 $signingDoc = Get-Content -LiteralPath (Join-Path $RepoRoot 'SIGNING.md') -Raw
-Test-Condition -Name 'Installer notice page' -Passed ($installerScript -match 'InfoBeforeFile=\.\.\\INSTALL-NOTICE\.txt') -Detail 'configured'
+$earlyInstallerCodeMatches = [regex]::Matches(
+  $installerScript,
+  '(?s)(procedure\s+(InitializeSetup|InitializeWizard|CurPageChanged|PrepareToInstall|NeedRestart|DeinitializeSetup)\b.*?begin.*?end;)'
+)
+$unsafeEarlyAppExpansion = $false
+foreach ($match in $earlyInstallerCodeMatches) {
+  if ($match.Value -match "ExpandConstant\('\{app\}" -or $match.Value -match 'ExpandConstant\("\{app\}') {
+    $unsafeEarlyAppExpansion = $true
+    break
+  }
+}
+Test-Condition -Name 'Installer notice page' -Passed (
+  ($installerScript -match 'InfoBeforeFile=\.\.\\INSTALL-NOTICE\.txt') -or
+  ($installerScript -match 'CreateCustomPage\(' -and $installerScript -match 'INSTALL-NOTICE\.txt')
+) -Detail 'configured'
+Test-Condition -Name 'No early {app} expansion in installer lifecycle' -Passed (-not $unsafeEarlyAppExpansion) -Detail 'InitializeWizard and other early events avoid destination constant expansion'
 Test-Condition -Name 'Installed legal files' -Passed ($installerScript -match 'THIRD-PARTY-NOTICES\.md' -and $installerScript -match '\.\.\\LICENSE') -Detail 'license and notices included'
 Test-Condition -Name 'Installed version file' -Passed ($installerScript -match '\.\.\\VERSION') -Detail 'version copied into app root'
 Test-Condition -Name 'Automatic UAC request' -Passed ($installerScript -match 'PrivilegesRequired=admin') -Detail 'configured'
 Test-Condition -Name 'Signing guidance' -Passed ($signingDoc -match 'does not remove the Windows User Account Control prompt' -and $signingDoc -match 'Never commit certificate files, private keys') -Detail 'UAC and secret handling documented'
+Test-Condition -Name 'Branding assets wired into installer' -Passed ($installerScript -match 'SetupIconFile=') -Detail 'setup icon configured'
+Test-Condition -Name 'Branding asset generation in build' -Passed ($buildScript -match 'Generate-BrandingAssets\.ps1' -and $buildScript -match 'MyBrandingDir') -Detail 'build creates deterministic installer assets'
 
 $forbiddenNames = @('state.json')
 $forbiddenDirectories = @('logs', 'backups', 'bin', 'BetterDiscord')

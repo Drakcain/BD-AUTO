@@ -1,5 +1,11 @@
 # BD-AUTO
 
+![BD-AUTO Smart Repair Utility](assets/branding/bd-auto-brand-banner.svg)
+
+**Smart Repair Utility**
+
+**Repair. Verify. Relaunch.**
+
 BD-AUTO installs BetterDiscord for Discord Stable, synchronizes a curated plugin/theme list, and repairs BetterDiscord after Discord updates.
 
 Users download one file from GitHub Releases:
@@ -31,6 +37,17 @@ The release EXE is the preferred friend-facing installer. A portable source bund
 
 There is no recurring five-minute poll and no background process that runs continuously.
 
+## Visual Identity
+
+BD-AUTO uses a project-owned dark repair-dashboard visual system across the README and installer:
+
+- black / charcoal / deep navy base
+- electric blue / violet-purple accents
+- repair-focused dashboard framing
+- BD patch status, addon sync, plugin/theme audit, watchdog automation, and relaunch messaging
+
+This branding pass does not change runtime repair logic, addon selection behavior, watchdog triggers, shortcut behavior, or release artifact semantics.
+
 ## Install
 
 1. Open the latest GitHub Release.
@@ -38,7 +55,7 @@ There is no recurring five-minute poll and no background process that runs conti
 3. Run it and approve the Windows administrator prompt.
 4. Wait for setup to install BetterDiscord and reopen Discord.
 
-After the progress bar fills, setup continues with hidden BetterDiscord repair, add-on synchronization, and repair-task setup. The last screen can sit there for up to 2 minutes while work is still happening in the background. Do not cancel unless setup reports an error.
+After the progress bar fills, BD-AUTO continues with hidden BetterDiscord repair, add-on synchronization, verification, and repair-task setup. The last screen can sit there for up to 2 minutes while work is still happening in the background. Do not cancel unless setup reports an error.
 
 The EXE is currently unsigned. Windows SmartScreen may show **Windows protected your PC**. Select **More info**, verify that the file came from this repository's Releases page, and select **Run anyway**.
 
@@ -214,3 +231,4 @@ Three configured add-on repositories currently have no detected license. They ar
 - Replaced exact manifest-version enforcement with source-aware, downgrade-safe addon selection and per-file backups.
 - Added a read-only addon audit report, Discord app path/write-time repair detection, and bundled-first bdcli repairs.
 - Added regression scenarios for the BDFDB downgrade loop and a double-click source bootstrapper.
+- Added a project-owned dark branding layer for the README and installer while keeping repair runtime behavior unchanged.

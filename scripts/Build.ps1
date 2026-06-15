@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = Join-Path $RepoRoot 'build'
 $stagedPayload = Join-Path $buildRoot 'payload'
+$brandingRoot = Join-Path $buildRoot 'branding'
 $versionFile = Join-Path $RepoRoot 'VERSION'
 
 if (-not $Version) {
@@ -100,12 +101,14 @@ Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinu
 New-Item -ItemType Directory -Force -Path $stagedPayload | Out-Null
 Copy-Item -Path (Join-Path $RepoRoot 'payload\*') -Destination $stagedPayload -Recurse -Force
 Add-VerifiedBdcliToPayload -PayloadRoot $stagedPayload
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Generate-BrandingAssets.ps1') -OutputRoot $brandingRoot | Out-Host
+if ($LASTEXITCODE -ne 0) { throw 'Branding asset generation failed.' }
 
 $dist = Join-Path $RepoRoot 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 Remove-Item -LiteralPath (Join-Path $dist 'BD-AUTO-Setup.exe') -Force -ErrorAction SilentlyContinue
 
-& $compiler "/DMyAppVersion=$Version" "/DMyPayloadDir=$stagedPayload" (Join-Path $RepoRoot 'installer\BD-AUTO.iss') | Out-Host
+& $compiler "/DMyAppVersion=$Version" "/DMyPayloadDir=$stagedPayload" "/DMyBrandingDir=$brandingRoot" (Join-Path $RepoRoot 'installer\BD-AUTO.iss') | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
 
 $output = Join-Path $dist 'BD-AUTO-Setup.exe'

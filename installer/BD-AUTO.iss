@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "1.1.1"
+  #define MyAppVersion "1.1.2"
 #endif
 #ifndef MyPayloadDir
   #define MyPayloadDir "..\payload"
@@ -33,6 +33,7 @@ SetupLogging=yes
 Uninstallable=yes
 UninstallDisplayName=BD-AUTO
 MinVersion=10.0.17763
+SetupIconFile=..\build\branding\bd-auto-setup.ico
 
 [Files]
 Source: "{#MyPayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -91,9 +92,9 @@ begin
     exit;
 
   WizardForm.StatusLabel.Caption :=
-    'Finishing BetterDiscord setup. Discord may close and reopen. This can take up to 2 minutes. Do not cancel.';
+    'BD-AUTO is finishing repair automation. Discord may close and reopen. This can take up to 2 minutes. Do not cancel.';
   WizardForm.FilenameLabel.Caption :=
-    'Installing BetterDiscord, syncing addons, and configuring repair automation...';
+    'Repairing, verifying, relaunching, and configuring BD-AUTO automation...';
   WizardForm.CancelButton.Caption := 'Please wait';
   WizardForm.CancelButton.Enabled := False;
 end;
@@ -104,7 +105,7 @@ begin
     exit;
 
   WizardForm.StatusLabel.Caption := 'BD-AUTO setup finished.';
-  WizardForm.FilenameLabel.Caption := 'BetterDiscord installation and repair automation completed.';
+  WizardForm.FilenameLabel.Caption := 'Smart repair utility installation completed.';
   WizardForm.CancelButton.Caption := SetupMessage(msgButtonCancel);
   WizardForm.CancelButton.Enabled := True;
 end;

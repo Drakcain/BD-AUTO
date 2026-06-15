@@ -1,5 +1,6 @@
 dist/
 build/
+build-manual/
 *.log
 state.json
 backups/

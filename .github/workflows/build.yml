@@ -51,6 +51,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "GitHub release $env:GITHUB_REF_NAME already exists. Skipping release creation to preserve the published asset set."
+            exit 0
+          }
+
           gh release create $env:GITHUB_REF_NAME `
             "dist/BD-AUTO-Setup.exe#BD-AUTO Setup" `
             "dist/BD-AUTO-Setup.exe.sha256#SHA-256 checksum" `
