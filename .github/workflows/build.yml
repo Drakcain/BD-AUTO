@@ -51,8 +51,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releasesJson = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Unable to query existing GitHub releases.'
+          }
+
+          $releaseExists = @($releasesJson | ConvertFrom-Json | Where-Object { $_.tagName -eq $env:GITHUB_REF_NAME }).Count -gt 0
+          if ($releaseExists) {
             Write-Host "GitHub release $env:GITHUB_REF_NAME already exists. Skipping release creation to preserve the published asset set."
             exit 0
           }
