@@ -218,17 +218,3 @@ Third-party plugins and themes are not embedded in the setup executable. They ar
 The repository's [MIT license](LICENSE) applies only to BD-AUTO's original scripts, documentation, manifest, workflow, and installer configuration. It does not relicense Discord, BetterDiscord, the BetterDiscord CLI, the BetterDiscord Installer, Inno Setup, GitHub Actions, or any plugin/theme.
 
 Three configured add-on repositories currently have no detected license. They are identified explicitly in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Absence of a license does not grant redistribution rights.
-
-## CODEX Did This
-
-- Replaced the recurring five-minute poll with hidden sign-in and wake-event triggers.
-- Added checksum verification for official BetterDiscord CLI downloads during setup and repair.
-- Added deterministic add-on synchronization with duplicate pruning and atomic enable-state writes.
-- Added Discord shutdown, relaunch, stabilization, and injection verification.
-- Added repair backups with bounded retention.
-- Added repository validation, secret scanning, Inno Setup packaging, and GitHub Actions releases.
-- Added a compatibility preflight, self-contained verified CLI packaging, graceful scheduled-task fallback, and installation summaries for stock and customized Windows builds.
-- Replaced exact manifest-version enforcement with source-aware, downgrade-safe addon selection and per-file backups.
-- Added a read-only addon audit report, Discord app path/write-time repair detection, and bundled-first bdcli repairs.
-- Added regression scenarios for the BDFDB downgrade loop and a double-click source bootstrapper.
-- Added a project-owned dark branding layer for the README and installer while keeping repair runtime behavior unchanged.

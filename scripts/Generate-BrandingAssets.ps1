@@ -7,9 +7,9 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$sourceSvg = Join-Path $repoRoot 'assets\branding\bd-auto-brand-banner.svg'
-if (-not (Test-Path -LiteralPath $sourceSvg)) {
-  throw "Branding source SVG was not found: $sourceSvg"
+$sourceBanner = Join-Path $repoRoot 'assets\branding\bd-auto-brand-banner.png'
+if (-not (Test-Path -LiteralPath $sourceBanner)) {
+  throw "Branding source banner was not found: $sourceBanner"
 }
 
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputRoot)
@@ -278,7 +278,7 @@ Draw-SmallWizard -path $small
 Draw-Icon -path $icon
 
 [pscustomobject]@{
-  SourceSvg = $sourceSvg
+  SourceBanner = $sourceBanner
   WizardSidebar = $large
   WizardHeader = $small
   SetupIcon = $icon
