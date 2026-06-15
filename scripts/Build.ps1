@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [ValidatePattern('^\d+\.\d+\.\d+([.-][A-Za-z0-9.-]+)?$')]
-  [string]$Version
+  [string]$Version,
+  [switch]$RefreshBdcli
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,12 +23,61 @@ function Add-VerifiedBdcliToPayload {
   param([Parameter(Mandatory = $true)][string]$PayloadRoot)
 
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $repoBundledCli = Join-Path $RepoRoot 'payload\bin\bdcli.exe'
+  $repoBundledMetadata = Join-Path $RepoRoot 'payload\bin\bdcli-source.json'
+  $installedCli = 'C:\Tools\BD-AUTO\bin\bdcli.exe'
+  $installedMetadata = 'C:\Tools\BD-AUTO\bin\bdcli-source.json'
   $tempRoot = Join-Path $env:TEMP ("bd-auto-build-{0}" -f [guid]::NewGuid().ToString('N'))
   $zipPath = "$tempRoot.zip"
   $checksumPath = "$tempRoot-checksums.txt"
+
+  function Copy-BundledBdcli {
+    param(
+      [Parameter(Mandatory = $true)][string]$CliPath,
+      [Parameter(Mandatory = $true)][string]$MetadataPath,
+      [Parameter(Mandatory = $true)][string]$SourceLabel
+    )
+
+    $binDir = Join-Path $PayloadRoot 'bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    Copy-Item -LiteralPath $CliPath -Destination (Join-Path $binDir 'bdcli.exe') -Force
+    Copy-Item -LiteralPath $MetadataPath -Destination (Join-Path $binDir 'bdcli-source.json') -Force
+    Write-Warning "Using bundled BetterDiscord CLI from $SourceLabel because live refresh was skipped or unavailable."
+  }
+
+  if (-not $RefreshBdcli) {
+    if ((Test-Path -LiteralPath $repoBundledCli) -and (Test-Path -LiteralPath $repoBundledMetadata)) {
+      Copy-BundledBdcli -CliPath $repoBundledCli -MetadataPath $repoBundledMetadata -SourceLabel 'repo payload\bin'
+      return
+    }
+
+    if ((Test-Path -LiteralPath $installedCli) -and (Test-Path -LiteralPath $installedMetadata)) {
+      Copy-BundledBdcli -CliPath $installedCli -MetadataPath $installedMetadata -SourceLabel 'local C:\Tools\BD-AUTO\bin cache'
+      return
+    }
+  }
+
   try {
     $headers = @{ 'User-Agent' = 'BD-AUTO Build' }
-    $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/BetterDiscord/cli/releases/latest' -Headers $headers
+    $release = $null
+    $releaseUri = 'https://api.github.com/repos/BetterDiscord/cli/releases/latest'
+    $attempts = 3
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+      try {
+        $release = Invoke-RestMethod -Uri $releaseUri -Headers $headers
+        break
+      } catch {
+        if ($attempt -eq $attempts) {
+          if ((Test-Path -LiteralPath $installedCli) -and (Test-Path -LiteralPath $installedMetadata)) {
+            Copy-BundledBdcli -CliPath $installedCli -MetadataPath $installedMetadata -SourceLabel 'local C:\Tools\BD-AUTO\bin cache after GitHub API failure'
+            return
+          }
+          throw
+        }
+        Write-Warning "BetterDiscord CLI release lookup failed on attempt $attempt/$attempts. Retrying..."
+        Start-Sleep -Seconds (2 * $attempt)
+      }
+    }
     $asset = $release.assets |
       Where-Object { $_.name -match '(?i)bdcli_.*_windows_amd64\.zip$' -or $_.name -match '(?i)windows.*amd64.*\.zip$' } |
       Select-Object -First 1

@@ -1,6 +1,6 @@
 # BD-AUTO
 
-![BD-AUTO Smart Repair Utility](assets/branding/bd-auto-brand-banner.svg)
+![BD-AUTO Smart Repair Utility](assets/branding/bd-auto-brand-banner.png)
 
 **Smart Repair Utility**
 

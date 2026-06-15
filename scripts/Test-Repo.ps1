@@ -80,6 +80,7 @@ Test-Condition -Name 'Discord terms disclosure' -Passed ($thirdPartyNotice -matc
 $installerScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'installer\BD-AUTO.iss') -Raw
 $buildScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts\Build.ps1') -Raw
 $signingDoc = Get-Content -LiteralPath (Join-Path $RepoRoot 'SIGNING.md') -Raw
+$bannerSvg = Get-Content -LiteralPath (Join-Path $RepoRoot 'assets\branding\bd-auto-brand-banner.svg') -Raw
 $earlyInstallerCodeMatches = [regex]::Matches(
   $installerScript,
   '(?s)(procedure\s+(InitializeSetup|InitializeWizard|CurPageChanged|PrepareToInstall|NeedRestart|DeinitializeSetup)\b.*?begin.*?end;)'
@@ -102,6 +103,21 @@ Test-Condition -Name 'Automatic UAC request' -Passed ($installerScript -match 'P
 Test-Condition -Name 'Signing guidance' -Passed ($signingDoc -match 'does not remove the Windows User Account Control prompt' -and $signingDoc -match 'Never commit certificate files, private keys') -Detail 'UAC and secret handling documented'
 Test-Condition -Name 'Branding assets wired into installer' -Passed ($installerScript -match 'SetupIconFile=') -Detail 'setup icon configured'
 Test-Condition -Name 'Branding asset generation in build' -Passed ($buildScript -match 'Generate-BrandingAssets\.ps1' -and $buildScript -match 'MyBrandingDir') -Detail 'build creates deterministic installer assets'
+Test-Condition -Name 'Banner SVG layout sanity' -Passed ($bannerSvg -notmatch '<text[^>]*\sy="-') -Detail 'no obvious negative text offsets'
+Test-Condition -Name 'Banner SVG branding content' -Passed (
+  $bannerSvg -match 'BD-AUTO' -and
+  $bannerSvg -match 'SMART REPAIR UTILITY' -and
+  $bannerSvg -match 'REPAIR\. VERIFY\. RELAUNCH\.' -and
+  $bannerSvg -match 'BDCLI-FIRST REPAIR' -and
+  $bannerSvg -match 'SOURCE-AWARE ADDONS' -and
+  $bannerSvg -match 'WATCHDOG AUTOMATION' -and
+  $bannerSvg -match 'PLUGIN / THEME AUDIT'
+) -Detail 'expected banner labels present'
+Test-Condition -Name 'Build bdcli fallback behavior' -Passed (
+  $buildScript -match 'RefreshBdcli' -and
+  $buildScript -match 'local C:\\Tools\\BD-AUTO\\bin cache' -and
+  $buildScript -match 'Using bundled BetterDiscord CLI'
+) -Detail 'build can fall back to bundled/local bdcli when live API is unavailable'
 
 $forbiddenNames = @('state.json')
 $forbiddenDirectories = @('logs', 'backups', 'bin', 'BetterDiscord')
