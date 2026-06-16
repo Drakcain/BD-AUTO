@@ -34,6 +34,7 @@ Uninstallable=yes
 UninstallDisplayName=BD-AUTO
 MinVersion=10.0.17763
 SetupIconFile=..\build\branding\bd-auto-setup.ico
+UninstallDisplayIcon={app}\BD-AUTO.ico
 
 [Files]
 Source: "{#MyPayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -54,7 +55,7 @@ Name: "{group}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\po
 Name: "{group}\BD-AUTO Logs"; Filename: "{app}\runtime\logs"
 Name: "{group}\View BD-AUTO Status"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\BD-AUTO-STATUS.txt"""; WorkingDir: "{app}"
 Name: "{group}\Installation Summary"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\runtime\install-summary.txt"""; WorkingDir: "{app}"
-Name: "{group}\Uninstall BD-AUTO"; Filename: "{uninstallexe}"
+Name: "{group}\Uninstall BD-AUTO"; Filename: "{uninstallexe}"; IconFilename: "{app}\BD-AUTO.ico"
 Name: "{group}\BD-AUTO on GitHub"; Filename: "{#MyAppURL}"
 Name: "{group}\Third-Party Notices"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\THIRD-PARTY-NOTICES.md"""; WorkingDir: "{app}"
 Name: "{group}\Signing and Windows Warnings"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\SIGNING.md"""; WorkingDir: "{app}"

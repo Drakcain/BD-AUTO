@@ -150,6 +150,11 @@ if (-not $resolvedBuildRoot.StartsWith([System.IO.Path]::GetFullPath($RepoRoot),
 Remove-Item -LiteralPath $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $stagedPayload | Out-Null
 Copy-Item -Path (Join-Path $RepoRoot 'payload\*') -Destination $stagedPayload -Recurse -Force
+$appIconSource = Join-Path $RepoRoot 'assets\App Icon\BD-AUTO_Icon.ico'
+if (-not (Test-Path -LiteralPath $appIconSource)) {
+  throw "BD-AUTO app icon was not found: $appIconSource"
+}
+Copy-Item -LiteralPath $appIconSource -Destination (Join-Path $stagedPayload 'BD-AUTO.ico') -Force
 Add-VerifiedBdcliToPayload -PayloadRoot $stagedPayload
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Generate-BrandingAssets.ps1') -OutputRoot $brandingRoot | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'Branding asset generation failed.' }

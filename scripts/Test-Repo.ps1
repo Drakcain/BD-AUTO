@@ -24,6 +24,8 @@ $requiredFiles = @(
   'THIRD-PARTY-NOTICES.md',
   'SIGNING.md',
   'SECURITY.md',
+  'assets\App Icon\BD-AUTO_Icon.png',
+  'assets\App Icon\BD-AUTO_Icon.ico',
   'assets\branding\bd-auto-brand-banner.png',
   '.gitignore',
   'installer\BD-AUTO.iss',
@@ -79,8 +81,10 @@ Test-Condition -Name 'Discord terms disclosure' -Passed ($thirdPartyNotice -matc
 
 $installerScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'installer\BD-AUTO.iss') -Raw
 $buildScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts\Build.ps1') -Raw
+$brandingScript = Get-Content -LiteralPath (Join-Path $RepoRoot 'scripts\Generate-BrandingAssets.ps1') -Raw
 $signingDoc = Get-Content -LiteralPath (Join-Path $RepoRoot 'SIGNING.md') -Raw
 $bannerPngPath = Join-Path $RepoRoot 'assets\branding\bd-auto-brand-banner.png'
+$appIconPath = Join-Path $RepoRoot 'assets\App Icon\BD-AUTO_Icon.ico'
 $earlyInstallerCodeMatches = [regex]::Matches(
   $installerScript,
   '(?s)(procedure\s+(InitializeSetup|InitializeWizard|CurPageChanged|PrepareToInstall|NeedRestart|DeinitializeSetup)\b.*?begin.*?end;)'
@@ -103,6 +107,10 @@ Test-Condition -Name 'Automatic UAC request' -Passed ($installerScript -match 'P
 Test-Condition -Name 'Signing guidance' -Passed ($signingDoc -match 'does not remove the Windows User Account Control prompt' -and $signingDoc -match 'Never commit certificate files, private keys') -Detail 'UAC and secret handling documented'
 Test-Condition -Name 'Branding assets wired into installer' -Passed ($installerScript -match 'SetupIconFile=') -Detail 'setup icon configured'
 Test-Condition -Name 'Branding asset generation in build' -Passed ($buildScript -match 'Generate-BrandingAssets\.ps1' -and $buildScript -match 'MyBrandingDir') -Detail 'build creates deterministic installer assets'
+Test-Condition -Name 'App uninstall icon source' -Passed ((Get-Item -LiteralPath $appIconPath).Length -gt 10KB) -Detail 'ICO is present and non-trivial'
+Test-Condition -Name 'Setup icon matches app icon source' -Passed ($brandingScript -match 'BD-AUTO_Icon\.ico' -and $brandingScript -match 'bd-auto-setup\.ico' -and $brandingScript -match 'Copy-Item') -Detail 'installer EXE icon is sourced from the app icon'
+Test-Condition -Name 'Uninstall display icon configured' -Passed ($installerScript -match 'UninstallDisplayIcon=\{app\}\\BD-AUTO\.ico') -Detail 'Windows Apps entry uses installed icon'
+Test-Condition -Name 'App icon staged into payload' -Passed ($buildScript -match 'BD-AUTO_Icon\.ico' -and $buildScript -match 'BD-AUTO\.ico') -Detail 'build copies icon to installed root'
 Test-Condition -Name 'README banner uses PNG' -Passed ($thirdPartyNotice -ne $null -and (Get-Content -LiteralPath (Join-Path $RepoRoot 'README.md') -Raw) -match 'assets/branding/bd-auto-brand-banner\.png') -Detail 'README renders PNG banner'
 Test-Condition -Name 'README banner does not use SVG' -Passed ((Get-Content -LiteralPath (Join-Path $RepoRoot 'README.md') -Raw) -notmatch 'assets/branding/bd-auto-brand-banner\.svg') -Detail 'SVG banner reference removed'
 Test-Condition -Name 'Banner PNG size sanity' -Passed ((Get-Item -LiteralPath $bannerPngPath).Length -gt 100KB) -Detail 'PNG is present and non-trivial'

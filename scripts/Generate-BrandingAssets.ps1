@@ -8,8 +8,12 @@ Add-Type -AssemblyName System.Drawing
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $sourceBanner = Join-Path $repoRoot 'assets\branding\bd-auto-brand-banner.png'
+$sourceAppIcon = Join-Path $repoRoot 'assets\App Icon\BD-AUTO_Icon.ico'
 if (-not (Test-Path -LiteralPath $sourceBanner)) {
   throw "Branding source banner was not found: $sourceBanner"
+}
+if (-not (Test-Path -LiteralPath $sourceAppIcon)) {
+  throw "BD-AUTO app icon was not found: $sourceAppIcon"
 }
 
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputRoot)
@@ -275,10 +279,11 @@ $icon = Join-Path $resolvedOutput 'bd-auto-setup.ico'
 
 Draw-LargeWizard -path $large
 Draw-SmallWizard -path $small
-Draw-Icon -path $icon
+Copy-Item -LiteralPath $sourceAppIcon -Destination $icon -Force
 
 [pscustomobject]@{
   SourceBanner = $sourceBanner
+  SourceAppIcon = $sourceAppIcon
   WizardSidebar = $large
   WizardHeader = $small
   SetupIcon = $icon
