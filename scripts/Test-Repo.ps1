@@ -41,6 +41,10 @@ $requiredFiles = @(
   'scripts\Generate-BrandingAssets.ps1',
   'scripts\Test-Compatibility.ps1',
   'scripts\Test-AddonSync.ps1',
+  'docs\PROJECT_IDENTITY.md',
+  'docs\INSTALLER.md',
+  'docs\CHANGELOG.md',
+  'docs\BRANDING.md',
   'docs\RELEASE-NOTES-v1.1.0.md'
 )
 foreach ($file in $requiredFiles) {

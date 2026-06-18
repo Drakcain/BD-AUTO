@@ -1,8 +1,26 @@
 # Security
 
+Current release:
+
+```text
+v1.1.3
+```
+
 ## Reporting
 
 Report suspected security issues privately through GitHub's security advisory feature. Do not publish credentials, tokens, or sensitive logs in a public issue.
+
+## Credentials
+
+BD-AUTO does not require:
+
+- Discord credentials
+- Discord tokens
+- BetterDiscord credentials
+- API keys
+- tokens
+
+Never enter Discord credentials into BD-AUTO.
 
 ## Download Safety
 
@@ -20,5 +38,11 @@ Add-on files are validated against their declared name and version metadata. Thi
 ## Scope
 
 BD-AUTO does not collect telemetry, Discord tokens, messages, or credentials. It does not delete Discord user data.
+
+## Local Data
+
+Runtime files under `C:\Tools\BD-AUTO\runtime\` and `C:\Tools\BD-AUTO\logs\` can reveal local Discord paths, add-on state, target-profile resolution, compatibility results, and repair history.
+
+Review logs and runtime JSON files before sharing them publicly.
 
 See `THIRD-PARTY-NOTICES.md` for ownership, license, and no-affiliation disclosures.

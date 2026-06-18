@@ -18,6 +18,13 @@ No PowerShell knowledge or manual file copying is required.
 
 The release EXE is the preferred friend-facing installer. A portable source bundle can also be started by double-clicking `Install-BD-AUTO.cmd`.
 
+## Project Docs
+
+- [docs/PROJECT_IDENTITY.md](docs/PROJECT_IDENTITY.md)
+- [docs/INSTALLER.md](docs/INSTALLER.md)
+- [docs/CHANGELOG.md](docs/CHANGELOG.md)
+- [docs/BRANDING.md](docs/BRANDING.md)
+
 ## What It Does
 
 - Installs to `C:\Tools\BD-AUTO`.
