@@ -171,7 +171,7 @@ $escapedUserSid = [Security.SecurityElement]::Escape($userSid)
 $escapedAuthor = [Security.SecurityElement]::Escape($userName)
 $watchdogArguments = (
   '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass ' +
-  "-File `"$scriptPath`" -WaitForDiscord " +
+  "-File `"$scriptPath`" -WaitForDiscord -RepairAfterDiscordUpdate -ReopenDiscord " +
   '-NoElevationPrompt -DiscordWaitTimeoutSeconds 300 -DiscordStabilizeSeconds 10 -DiscordStabilizePollSeconds 2 ' +
   "-TargetUserName `"$($targetProfile.UserName)`" " +
   "-TargetRoamingAppData `"$($targetProfile.RoamingAppData)`" " +
@@ -192,7 +192,7 @@ $taskXml = @"
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>$escapedAuthor</Author>
-    <Description>Checks BetterDiscord once after sign-in and once after resume from sleep.</Description>
+    <Description>Checks Discord update state after sign-in and resume from sleep, then repairs BetterDiscord if Discord changed.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>

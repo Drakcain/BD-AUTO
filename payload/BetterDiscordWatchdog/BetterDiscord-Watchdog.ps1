@@ -756,6 +756,8 @@ function Repair-WatchdogTaskDefinition {
   $hasTimeTrigger = $triggerClasses -contains 'MSFT_TaskTimeTrigger'
   $definitionCurrent = (
     $arguments -match '-WaitForDiscord' -and
+    $arguments -match '-RepairAfterDiscordUpdate' -and
+    $arguments -match '-ReopenDiscord' -and
     $arguments -match '-NoElevationPrompt' -and
     $arguments -match '-DiscordWaitTimeoutSeconds 300' -and
     $arguments -match '-TargetRoamingAppData' -and

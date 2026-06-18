@@ -125,6 +125,7 @@ BD-AUTO does:
 - compare the currently running Discord app folder with the newest staged `app-*` folder
 - detect when BetterDiscord is no longer attached to the current Discord app
 - repair and resync BetterDiscord after Discord changes
+- on supported sign-in / resume scheduled checks, automatically apply a staged Discord update through Discord's own local `Update.exe` flow before BetterDiscord repair when Discord is update-ready
 
 Useful commands:
 
@@ -152,6 +153,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDisc
 ```
 
 Use this when Discord already shows an update-ready state and you want BD-AUTO to handle the local post-update BetterDiscord repair flow after Discord transitions to the new app folder.
+
+The installed hidden sign-in / wake task now uses that same Discord-only workflow automatically. If Discord starts after boot or wake and already has a staged update ready, BD-AUTO can let Discord transition through its own updater and then verify or repair BetterDiscord on the new app folder.
 
 ## Troubleshooting Add-On Toggles
 
