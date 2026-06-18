@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: GitHub Releases
+    url: https://github.com/Drakcain/BD-AUTO/releases
+    about: Download the latest installer release.
+  - name: Security Policy
+    url: https://github.com/Drakcain/BD-AUTO/blob/main/SECURITY.md
+    about: Review safe reporting guidance before posting sensitive details.
