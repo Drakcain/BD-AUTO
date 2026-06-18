@@ -35,6 +35,9 @@ jobs:
 
       - name: Build installer
         shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: .\scripts\Build.ps1 -Version '${{ steps.version.outputs.version }}'
 
       - name: Upload build artifact

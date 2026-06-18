@@ -59,6 +59,12 @@ function Add-VerifiedBdcliToPayload {
 
   try {
     $headers = @{ 'User-Agent' = 'BD-AUTO Build' }
+    $gitHubToken = $env:BD_AUTO_GITHUB_TOKEN
+    if ([string]::IsNullOrWhiteSpace($gitHubToken)) { $gitHubToken = $env:GH_TOKEN }
+    if ([string]::IsNullOrWhiteSpace($gitHubToken)) { $gitHubToken = $env:GITHUB_TOKEN }
+    if (-not [string]::IsNullOrWhiteSpace($gitHubToken)) {
+      $headers.Authorization = "Bearer $gitHubToken"
+    }
     $release = $null
     $releaseUri = 'https://api.github.com/repos/BetterDiscord/cli/releases/latest'
     $attempts = 3
