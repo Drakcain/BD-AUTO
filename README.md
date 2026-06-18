@@ -25,6 +25,13 @@ The release EXE is the preferred friend-facing installer. A portable source bund
 - [docs/CHANGELOG.md](docs/CHANGELOG.md)
 - [docs/BRANDING.md](docs/BRANDING.md)
 
+## Support And Legal
+
+- [SECURITY.md](SECURITY.md)
+- [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+- [SIGNING.md](SIGNING.md)
+- [LICENSE](LICENSE)
+
 ## What It Does
 
 - Installs to `C:\Tools\BD-AUTO`.
