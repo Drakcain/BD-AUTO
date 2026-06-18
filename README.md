@@ -107,6 +107,52 @@ Use any of these:
 powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -Status
 ```
 
+## Discord Updates + BD-AUTO Resync
+
+Discord updates can move Discord to a new `app-*` folder and leave BetterDiscord attached to the previous one. BD-AUTO is scoped to that problem only.
+
+BD-AUTO does not:
+
+- update every app on the system
+- run `winget upgrade --all`
+- force uninstall/reinstall Discord
+- download random third-party updaters
+
+BD-AUTO does:
+
+- detect Discord Stable under `%LOCALAPPDATA%\Discord`
+- inspect PTB and Canary roots for visibility only
+- compare the currently running Discord app folder with the newest staged `app-*` folder
+- detect when BetterDiscord is no longer attached to the current Discord app
+- repair and resync BetterDiscord after Discord changes
+
+Useful commands:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -CheckDiscordUpdateState
+```
+
+Shows:
+
+- Discord channel roots checked
+- running app folder/version
+- newest staged app folder/version
+- pending update state
+- BetterDiscord injection state
+- whether repair is currently needed
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -MonitorDiscordUpdate -TimeoutMinutes 10
+```
+
+This waits for a Discord update transition to settle, then re-checks the final state. It is bounded and will time out instead of hanging forever.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\BD-AUTO\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1" -RepairAfterDiscordUpdate -ReopenDiscord
+```
+
+Use this when Discord already shows an update-ready state and you want BD-AUTO to handle the local post-update BetterDiscord repair flow after Discord transitions to the new app folder.
+
 ## Troubleshooting Add-On Toggles
 
 If BetterDiscord appears in Discord but the Plugins or Themes page is empty:

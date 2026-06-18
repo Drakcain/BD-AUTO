@@ -1,10 +1,13 @@
 [CmdletBinding()]
 param(
   [switch]$Status,
+  [switch]$CheckDiscordUpdateState,
   [Alias('PluginAudit')]
   [switch]$AddonAudit,
   [switch]$DryRun,
   [switch]$ForceRepair,
+  [switch]$RepairAfterDiscordUpdate,
+  [switch]$MonitorDiscordUpdate,
   [switch]$ReopenDiscord,
   [switch]$NoReopenDiscord,
   [switch]$RestoreStash,
@@ -12,9 +15,11 @@ param(
   [switch]$ElevatedRepair,
   [switch]$WaitForDiscord,
   [int]$StartupDelaySeconds = 0,
+  [int]$MonitorTimeoutMinutes = 10,
   [int]$DiscordWaitTimeoutSeconds = 300,
   [int]$DiscordStabilizeSeconds = 10,
   [int]$DiscordStabilizePollSeconds = 2,
+  [int]$UpdateQuietSeconds = 15,
   [int]$BackupRetentionCount = 3,
   [string]$TargetUserName,
   [string]$TargetRoamingAppData,
@@ -25,6 +30,12 @@ $ErrorActionPreference = 'Stop'
 
 $BaseDir = $PSScriptRoot
 $RootDir = Split-Path -Parent $BaseDir
+$SourceRepoRoot = Split-Path -Parent $RootDir
+$RunningFromSourceRepo = (
+  (Split-Path -Leaf $RootDir) -eq 'payload' -and
+  (Test-Path -LiteralPath (Join-Path $SourceRepoRoot '.git')) -and
+  (Test-Path -LiteralPath (Join-Path $SourceRepoRoot 'scripts\Test-Repo.ps1'))
+)
 $ProfileResolverPath = Join-Path $RootDir 'Resolve-BDAutoTargetProfile.ps1'
 $CompatibilityPath = Join-Path $RootDir 'Get-BDAutoCompatibility.ps1'
 if (-not (Test-Path -LiteralPath $ProfileResolverPath)) {
@@ -35,6 +46,11 @@ if (-not (Test-Path -LiteralPath $CompatibilityPath)) {
 }
 . $ProfileResolverPath
 . $CompatibilityPath
+$RuntimeContainerRoot = if ($RunningFromSourceRepo) {
+  Join-Path $env:TEMP ("bd-auto-source-watchdog-{0}" -f [Environment]::UserName)
+} else {
+  $RootDir
+}
 $SavedProfilePath = Join-Path $RootDir 'runtime\target-profile.json'
 if (
   (Test-Path -LiteralPath $SavedProfilePath) -and
@@ -52,7 +68,7 @@ $TargetProfile = Resolve-BDAutoTargetProfile `
   -TargetRoamingAppData $TargetRoamingAppData `
   -TargetLocalAppData $TargetLocalAppData
 
-$RuntimeRoot = Join-Path $RootDir 'runtime'
+$RuntimeRoot = Join-Path $RuntimeContainerRoot 'runtime'
 $LogDir = Join-Path $RuntimeRoot 'logs'
 $BackupRoot = Join-Path $RuntimeRoot 'backups'
 $StatePath = Join-Path $RuntimeRoot 'state.json'
@@ -60,7 +76,11 @@ $ManifestPath = Join-Path $RootDir 'addons.manifest.json'
 $AddonSyncPath = Join-Path $RootDir 'Sync-BetterDiscordAddons.ps1'
 $AddonCacheRoot = Join-Path $RootDir 'BetterDiscord'
 $AddonReportPath = Join-Path $RuntimeRoot 'addon-audit.json'
-$VersionFilePath = Join-Path $RootDir 'VERSION'
+$VersionFilePath = if ($RunningFromSourceRepo) {
+  Join-Path $SourceRepoRoot 'VERSION'
+} else {
+  Join-Path $RootDir 'VERSION'
+}
 $InstalledVersionPath = Join-Path $RuntimeRoot 'installed-version.json'
 $ReleaseUrl = $null
 $DiscordRoot = $TargetProfile.DiscordRoot
@@ -112,6 +132,7 @@ function Show-Status {
     try { $installedVersion = Get-Content -LiteralPath $InstalledVersionPath -Raw | ConvertFrom-Json } catch { }
   }
   $taskStatus = Get-ScheduledTaskStatus
+  $workflowState = Get-DiscordWorkflowState -ExistingState $state
   $discordApp = Get-DiscordApp
   $discordAppPath = if ($discordApp) { $discordApp.FullName } else { $null }
   $injectionInstalled = if ($discordAppPath) { Test-BetterDiscordInjection -DiscordAppPath $discordAppPath } else { $false }
@@ -124,6 +145,10 @@ function Show-Status {
     "Target user: $($TargetProfile.UserName)"
     "Discord path: $DiscordRoot"
     "BetterDiscord path: $ActiveBDRoot"
+    "Discord stable state: $($workflowState.stable_channel.install_state)"
+    "Discord stable running app: $(if ($workflowState.stable_channel.running_app_version) { $workflowState.stable_channel.running_app_version } else { 'none' })"
+    "Discord stable latest app: $(if ($workflowState.stable_channel.latest_app_version) { $workflowState.stable_channel.latest_app_version } else { 'none' })"
+    "Discord pending update: $($workflowState.stable_channel.pending_update)"
     "BetterDiscord injection: $(if ($injectionInstalled) { 'verified' } else { 'not verified' })"
     "Plugins: $(Get-Count -Path $ActivePlugins -Filter '*.plugin.js')"
     "Themes: $(Get-Count -Path $ActiveThemes -Filter '*.theme.css')"
@@ -196,8 +221,249 @@ function Get-DiscordAppSignature {
   if (-not $app) { return $null }
   return [pscustomobject]@{
     Path = $app.FullName
+    Version = ($app.Name -replace '^app-', '')
     WriteTime = $app.LastWriteTime.ToString('o')
   }
+}
+
+function Get-DiscordUpdaterProcesses {
+  $processes = @()
+  try {
+    $processes = @(Get-CimInstance Win32_Process -Filter "Name='Update.exe'" -ErrorAction Stop)
+  } catch {
+    $processes = @(Get-Process Update -ErrorAction SilentlyContinue | ForEach-Object {
+      [pscustomobject]@{
+        ProcessId = $_.Id
+        ExecutablePath = try { $_.Path } catch { $null }
+      }
+    })
+  }
+
+  return @($processes | Where-Object {
+    $_.ExecutablePath -and
+    $_.ExecutablePath.StartsWith($DiscordRoot, [System.StringComparison]::OrdinalIgnoreCase)
+  })
+}
+
+function Get-DiscordAppDirectories {
+  param([string]$ChannelRoot)
+
+  if ([string]::IsNullOrWhiteSpace($ChannelRoot) -or -not (Test-Path -LiteralPath $ChannelRoot)) {
+    return @()
+  }
+
+  $items = @(Get-ChildItem -LiteralPath $ChannelRoot -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Discord.exe') })
+
+  return @($items | Sort-Object @{
+      Expression = {
+        try { [version](($_.Name -replace '^app-', '')) } catch { [version]'0.0.0.0' }
+      }
+      Descending = $true
+    }, @{
+      Expression = { $_.LastWriteTime }
+      Descending = $true
+    })
+}
+
+function Get-DiscordChannelState {
+  param(
+    [Parameter(Mandatory = $true)][string]$Channel,
+    [Parameter(Mandatory = $true)][string]$ChannelRoot
+  )
+
+  $updateExe = Join-Path $ChannelRoot 'Update.exe'
+  $appDirs = @(Get-DiscordAppDirectories -ChannelRoot $ChannelRoot)
+  $latestApp = $appDirs | Select-Object -First 1
+  $runningProcesses = @(Get-DiscordProcesses | Where-Object {
+    $_.Path -and $_.Path.StartsWith($ChannelRoot, [System.StringComparison]::OrdinalIgnoreCase)
+  })
+  $runningApp = $null
+  if ($runningProcesses.Count -gt 0) {
+    $runningPath = Split-Path -Parent $runningProcesses[0].Path
+    if (Test-Path -LiteralPath $runningPath) {
+      $runningApp = Get-Item -LiteralPath $runningPath
+    }
+  }
+
+  $downloadPath = Join-Path $ChannelRoot 'download'
+  $packagesPath = Join-Path $ChannelRoot 'packages'
+  $installerDb = Join-Path $ChannelRoot 'installer.db'
+  $downloadWriteTime = if (Test-Path -LiteralPath $downloadPath) { (Get-Item -LiteralPath $downloadPath).LastWriteTime.ToString('o') } else { $null }
+  $packagesWriteTime = if (Test-Path -LiteralPath $packagesPath) { (Get-Item -LiteralPath $packagesPath).LastWriteTime.ToString('o') } else { $null }
+  $installerDbWriteTime = if (Test-Path -LiteralPath $installerDb) { (Get-Item -LiteralPath $installerDb).LastWriteTime.ToString('o') } else { $null }
+  $updaterProcesses = @(Get-DiscordUpdaterProcesses)
+
+  $pendingUpdate = $false
+  $pendingReason = $null
+  if ($runningApp -and $latestApp -and $runningApp.FullName -ne $latestApp.FullName) {
+    $pendingUpdate = $true
+    $pendingReason = 'newer app folder is staged while Discord is still running an older folder'
+  } elseif ($updaterProcesses.Count -gt 0) {
+    $pendingUpdate = $true
+    $pendingReason = 'Discord updater process is active'
+  } elseif (-not $runningApp -and $latestApp -and $downloadWriteTime) {
+    $pendingReason = 'Discord is not running; pending state is unknown'
+  }
+
+  $installState = if (-not (Test-Path -LiteralPath $ChannelRoot)) {
+    'missing'
+  } elseif ($pendingUpdate) {
+    'update-ready'
+  } elseif ($runningProcesses.Count -gt 0) {
+    'running'
+  } elseif ($latestApp) {
+    'installed'
+  } else {
+    'unknown'
+  }
+
+  return [pscustomobject]@{
+    channel = $Channel
+    root = $ChannelRoot
+    update_exe_present = [bool](Test-Path -LiteralPath $updateExe)
+    install_present = [bool](Test-Path -LiteralPath $ChannelRoot)
+    install_state = $installState
+    app_count = $appDirs.Count
+    app_paths = @($appDirs | ForEach-Object FullName)
+    latest_app_path = if ($latestApp) { $latestApp.FullName } else { $null }
+    latest_app_version = if ($latestApp) { ($latestApp.Name -replace '^app-', '') } else { $null }
+    latest_app_write_time = if ($latestApp) { $latestApp.LastWriteTime.ToString('o') } else { $null }
+    running_process_count = $runningProcesses.Count
+    running_app_path = if ($runningApp) { $runningApp.FullName } else { $null }
+    running_app_version = if ($runningApp) { ($runningApp.Name -replace '^app-', '') } else { $null }
+    updater_process_count = $updaterProcesses.Count
+    pending_update = $pendingUpdate
+    pending_update_reason = $pendingReason
+    download_write_time = $downloadWriteTime
+    packages_write_time = $packagesWriteTime
+    installer_db_write_time = $installerDbWriteTime
+  }
+}
+
+function Get-DiscordWorkflowState {
+  param([hashtable]$ExistingState)
+
+  $channelStates = @()
+  foreach ($root in @($TargetProfile.DiscordRoots)) {
+    $channelStates += Get-DiscordChannelState -Channel $root.Channel -ChannelRoot $root.Root
+  }
+
+  $stableChannel = $channelStates | Where-Object channel -eq 'stable' | Select-Object -First 1
+  $currentSignature = Get-DiscordAppSignature
+  $currentAppPath = if ($currentSignature) { $currentSignature.Path } else { $null }
+  $currentInjection = if ($currentAppPath) { Test-BetterDiscordInjection -DiscordAppPath $currentAppPath } else { $false }
+  $runtimePresent = Test-Path -LiteralPath (Join-Path $ActiveData 'betterdiscord.asar')
+  $reasons = New-Object System.Collections.Generic.List[string]
+
+  if (-not $currentInjection) { $reasons.Add('BetterDiscord injection missing on current Discord app') }
+  if (-not $runtimePresent) { $reasons.Add('BetterDiscord runtime missing') }
+  if ($ExistingState.last_successful_repair_discord_app_path -and $currentSignature -and $ExistingState.last_successful_repair_discord_app_path -ne $currentSignature.Path) {
+    $reasons.Add('Discord app path changed since the last successful repair')
+  }
+  if ($ExistingState.last_successful_repair_discord_app_write_time -and $currentSignature -and $ExistingState.last_successful_repair_discord_app_write_time -ne $currentSignature.WriteTime) {
+    $reasons.Add('Discord app write time changed since the last successful repair')
+  }
+
+  return [pscustomobject]@{
+    checked_at = (Get-Date).ToString('o')
+    target_user = $TargetProfile.UserName
+    betterdiscord_root = $ActiveBDRoot
+    stable_discord_root = $DiscordRoot
+    channel_states = $channelStates
+    supported_channel = 'stable'
+    stable_channel = $stableChannel
+    current_discord_app = $currentSignature
+    discord_process_running = [bool](Get-DiscordProcesses)
+    betterdiscord_runtime_present = $runtimePresent
+    betterdiscord_injection_current = $currentInjection
+    last_successful_repair_time = $ExistingState.last_repair_time
+    last_successful_repair_discord_app_path = $ExistingState.last_successful_repair_discord_app_path
+    last_successful_repair_discord_app_write_time = $ExistingState.last_successful_repair_discord_app_write_time
+    repair_reasons = @($reasons)
+    repair_needed = ($reasons.Count -gt 0)
+  }
+}
+
+function Write-DiscordWorkflowState {
+  param(
+    [Parameter(Mandatory = $true)]$WorkflowState,
+    [switch]$AsJson
+  )
+
+  if ($AsJson) {
+    $WorkflowState | ConvertTo-Json -Depth 8 | Write-Host
+    return
+  }
+
+  Write-Host "Discord update state checked: $($WorkflowState.checked_at)"
+  Write-Host "Target user: $($WorkflowState.target_user)"
+  Write-Host "Supported repair channel: $($WorkflowState.supported_channel)"
+  foreach ($channelState in @($WorkflowState.channel_states)) {
+    Write-Host ("Channel {0}: state={1}; root={2}; running={3}; latest={4}; pending_update={5}" -f
+      $channelState.channel,
+      $channelState.install_state,
+      $channelState.root,
+      $(if ($channelState.running_app_version) { $channelState.running_app_version } else { 'none' }),
+      $(if ($channelState.latest_app_version) { $channelState.latest_app_version } else { 'none' }),
+      $channelState.pending_update)
+    if ($channelState.pending_update_reason) {
+      Write-Host "  Pending reason: $($channelState.pending_update_reason)"
+    }
+  }
+  Write-Host "BetterDiscord runtime present: $($WorkflowState.betterdiscord_runtime_present)"
+  Write-Host "BetterDiscord injection on current app: $($WorkflowState.betterdiscord_injection_current)"
+  Write-Host "Repair needed: $($WorkflowState.repair_needed)"
+  if ($WorkflowState.repair_reasons.Count -gt 0) {
+    Write-Host "Repair reasons: $($WorkflowState.repair_reasons -join '; ')"
+  }
+}
+
+function Wait-DiscordUpdateTransition {
+  param(
+    [Parameter(Mandatory = $true)]$InitialState,
+    [int]$TimeoutMinutes = 10,
+    [int]$PollSeconds = 2,
+    [int]$QuietSeconds = 15
+  )
+
+  $timeoutMinutes = [math]::Max($TimeoutMinutes, 1)
+  $quietSeconds = [math]::Max($QuietSeconds, 1)
+  $deadline = (Get-Date).AddMinutes($timeoutMinutes)
+  $initialPath = $InitialState.current_discord_app.Path
+  $initialWriteTime = $InitialState.current_discord_app.WriteTime
+  $quietUntil = $null
+
+  Write-Log ("Monitoring Discord update state for up to {0} minute(s)." -f $timeoutMinutes)
+  while ((Get-Date) -lt $deadline) {
+    $current = Get-DiscordWorkflowState -ExistingState $state
+    $currentPath = $current.current_discord_app.Path
+    $currentWriteTime = $current.current_discord_app.WriteTime
+    $changed = (
+      ($initialPath -and $currentPath -and $initialPath -ne $currentPath) -or
+      ($initialWriteTime -and $currentWriteTime -and $initialWriteTime -ne $currentWriteTime)
+    )
+    $updaterActive = ($current.stable_channel.updater_process_count -gt 0)
+
+    if ($changed -and -not $updaterActive) {
+      if (-not $quietUntil) {
+        $quietUntil = (Get-Date).AddSeconds($quietSeconds)
+        Write-Log "Discord update transition detected. Waiting $quietSeconds quiet second(s) for stability."
+      } elseif ((Get-Date) -ge $quietUntil) {
+        $stable = Wait-DiscordAppStable -StabilizeSeconds $DiscordStabilizeSeconds -PollSeconds $DiscordStabilizePollSeconds
+        $final = Get-DiscordWorkflowState -ExistingState $state
+        Write-Log ("Discord update monitor observed stable app path: {0}" -f $(if ($stable) { $stable.Path } else { 'unknown' }))
+        return $final
+      }
+    } else {
+      $quietUntil = $null
+    }
+
+    Start-Sleep -Seconds ([math]::Max($PollSeconds, 1))
+  }
+
+  Write-Log 'Discord update monitor timed out before a stable transition was observed.' 'WARN'
+  return $null
 }
 
 function Wait-DiscordProcess {
@@ -578,10 +844,71 @@ if ($AddonAudit) {
   Write-Host "Addons: $($audit.addon_count); problems: $($audit.problem_count)"
   exit 0
 }
+if ($CheckDiscordUpdateState) {
+  $workflowState = Get-DiscordWorkflowState -ExistingState $state
+  $state.last_check_time = $workflowState.checked_at
+  $state.last_check_result = if ($workflowState.repair_needed) { 'repair-needed' } else { 'healthy' }
+  $state.last_discord_workflow_state = $workflowState
+  Save-State $state
+  Write-DiscordWorkflowState -WorkflowState $workflowState
+  exit 0
+}
 Repair-WatchdogTaskDefinition
 if ($StartupDelaySeconds -gt 0) {
   Write-Log "Startup delay: $StartupDelaySeconds second(s)."
   Start-Sleep -Seconds $StartupDelaySeconds
+}
+
+if ($RepairAfterDiscordUpdate) {
+  $initialWorkflowState = Get-DiscordWorkflowState -ExistingState $state
+  Write-Log 'RepairAfterDiscordUpdate command requested.'
+  Write-DiscordWorkflowState -WorkflowState $initialWorkflowState
+
+  if (-not $initialWorkflowState.stable_channel.install_present) {
+    throw 'Discord Stable is not installed for the target profile.'
+  }
+
+  if ($initialWorkflowState.stable_channel.pending_update) {
+    Write-Log 'Pending Discord update detected; applying it through the local Discord Update.exe flow.'
+    if (Get-DiscordProcesses) {
+      $stopped = Stop-Discord
+      Write-Log ("Stopped Discord process IDs for update application: {0}" -f (($stopped.Id) -join ', '))
+    }
+    if (-not (Start-Discord)) {
+      throw 'Discord update application could not start the local Discord launcher.'
+    }
+  } else {
+    Write-Log 'No pending Discord update was detected; continuing with post-update health verification only.'
+  }
+
+  $monitoredState = Wait-DiscordUpdateTransition -InitialState $initialWorkflowState -TimeoutMinutes $MonitorTimeoutMinutes -PollSeconds $DiscordStabilizePollSeconds -QuietSeconds $UpdateQuietSeconds
+  if (-not $monitoredState) {
+    $state.last_check_time = (Get-Date).ToString('o')
+    $state.last_check_result = 'discord-update-monitor-timeout'
+    Save-State $state
+    throw "Discord update did not reach a stable state within $MonitorTimeoutMinutes minute(s)."
+  }
+  Write-DiscordWorkflowState -WorkflowState $monitoredState
+}
+
+if ($MonitorDiscordUpdate) {
+  $initialWorkflowState = Get-DiscordWorkflowState -ExistingState $state
+  Write-Log 'MonitorDiscordUpdate command requested.'
+  Write-DiscordWorkflowState -WorkflowState $initialWorkflowState
+  $monitoredState = Wait-DiscordUpdateTransition -InitialState $initialWorkflowState -TimeoutMinutes $MonitorTimeoutMinutes -PollSeconds $DiscordStabilizePollSeconds -QuietSeconds $UpdateQuietSeconds
+  if (-not $monitoredState) {
+    $state.last_check_time = (Get-Date).ToString('o')
+    $state.last_check_result = 'discord-update-monitor-timeout'
+    Save-State $state
+    if ($DryRun) {
+      Write-Log 'Dry-run monitor ended without an observed update transition.'
+      exit 0
+    }
+    throw "Discord update did not reach a stable state within $MonitorTimeoutMinutes minute(s)."
+  }
+  $state.last_discord_workflow_state = $monitoredState
+  Save-State $state
+  Write-DiscordWorkflowState -WorkflowState $monitoredState
 }
 
 if ($WaitForDiscord -and -not (Get-DiscordProcesses)) {

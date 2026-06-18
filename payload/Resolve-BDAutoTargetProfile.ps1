@@ -56,6 +56,18 @@ function Get-BDAutoProfileByName {
   return $null
 }
 
+function Get-BDAutoDiscordChannelRoots {
+  param([string]$LocalAppData)
+
+  if ([string]::IsNullOrWhiteSpace($LocalAppData)) { return @() }
+
+  return @(
+    [pscustomobject]@{ Channel = 'stable'; Root = (Join-Path $LocalAppData 'Discord') }
+    [pscustomobject]@{ Channel = 'ptb'; Root = (Join-Path $LocalAppData 'DiscordPTB') }
+    [pscustomobject]@{ Channel = 'canary'; Root = (Join-Path $LocalAppData 'DiscordCanary') }
+  )
+}
+
 function New-BDAutoProfileResult {
   param(
     [string]$ProfileRoot,
@@ -95,6 +107,7 @@ function New-BDAutoProfileResult {
     LocalAppData = $LocalAppData
     BetterDiscordRoot = Join-Path $RoamingAppData 'BetterDiscord'
     DiscordRoot = Join-Path $LocalAppData 'Discord'
+    DiscordRoots = @(Get-BDAutoDiscordChannelRoots -LocalAppData $LocalAppData)
     DetectionSource = $Source
   }
 }
@@ -217,6 +230,9 @@ function Write-BDAutoTargetProfileLog {
   & $WriteLog "Target Local AppData: $($Profile.LocalAppData)"
   & $WriteLog "Active BetterDiscord path: $($Profile.BetterDiscordRoot)"
   & $WriteLog "Target Discord path: $($Profile.DiscordRoot)"
+  foreach ($root in @($Profile.DiscordRoots)) {
+    & $WriteLog "Discord channel root [$($root.Channel)]: $($root.Root)"
+  }
 }
 
 function Get-BDAutoDiscordProcessIds {
