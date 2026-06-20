@@ -9,7 +9,7 @@ BD-AUTO
 Active local repository path:
 
 ```text
-C:\GITHUB BUILDS\WINDOWS\BD-AUTO
+D:\GITHUB BUILDS\WINDOWS\BD-AUTO
 ```
 
 Active GitHub repository:
@@ -50,3 +50,4 @@ It is installer-first, repair-focused, and deliberately scoped to Discord Stable
 - `installer\` contains the Inno Setup installer definition.
 - `scripts\` contains build, validation, and compatibility checks.
 - `docs\` contains release and operator documentation.
+
