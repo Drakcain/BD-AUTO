@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "1.1.2"
+  #define MyAppVersion "1.1.4"
 #endif
 #ifndef MyPayloadDir
   #define MyPayloadDir "..\payload"
@@ -52,6 +52,7 @@ Name: "{app}\runtime"; Permissions: users-modify
 
 [Icons]
 Name: "{group}\Repair BetterDiscord"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -File ""{app}\BetterDiscordWatchdog\BetterDiscord-Watchdog.ps1"" -ForceRepair -RestoreStash -ReopenDiscord"; WorkingDir: "{app}"
+Name: "{group}\Check for BD-AUTO Updates"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\Update-BD-AUTO.ps1"""; WorkingDir: "{app}"
 Name: "{group}\BD-AUTO Logs"; Filename: "{app}\runtime\logs"
 Name: "{group}\View BD-AUTO Status"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\BD-AUTO-STATUS.txt"""; WorkingDir: "{app}"
 Name: "{group}\Installation Summary"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\runtime\install-summary.txt"""; WorkingDir: "{app}"

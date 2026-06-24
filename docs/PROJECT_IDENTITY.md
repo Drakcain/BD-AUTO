@@ -9,7 +9,7 @@ BD-AUTO
 Active local repository path:
 
 ```text
-D:\GITHUB BUILDS\WINDOWS\BD-AUTO
+<workspace>\BD-AUTO
 ```
 
 Active GitHub repository:
