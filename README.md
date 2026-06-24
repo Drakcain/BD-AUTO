@@ -16,6 +16,8 @@ BD-AUTO-Setup.exe
 
 No PowerShell knowledge or manual file copying is required.
 
+If GitHub also shows a `.sha256` file, ignore it unless you specifically want to verify the download manually. Most users only need `BD-AUTO-Setup.exe`.
+
 The release EXE is the preferred friend-facing installer. A portable source bundle can also be started by double-clicking `Install-BD-AUTO.cmd`.
 
 ## Project Docs
@@ -68,6 +70,8 @@ This branding pass does not change runtime repair logic, addon selection behavio
 2. Download `BD-AUTO-Setup.exe`.
 3. Run it and approve the Windows administrator prompt.
 4. Wait for setup to install BetterDiscord and reopen Discord.
+
+Do not download the `.sha256` file unless you know you want a manual checksum verification file. It is not the installer.
 
 After the progress bar fills, BD-AUTO continues with hidden BetterDiscord repair, add-on synchronization, verification, and repair-task setup. The last screen can sit there for up to 2 minutes while work is still happening in the background. Do not cancel unless setup reports an error.
 

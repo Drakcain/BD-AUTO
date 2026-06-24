@@ -67,7 +67,7 @@ jobs:
 
           gh release create $env:GITHUB_REF_NAME `
             "dist/BD-AUTO-Setup.exe#BD-AUTO Setup" `
-            "dist/BD-AUTO-Setup.exe.sha256#SHA-256 checksum" `
+            "dist/BD-AUTO-Setup.exe.sha256#Optional checksum for advanced users" `
             --title "BD-AUTO $env:GITHUB_REF_NAME" `
-            --notes "See [THIRD-PARTY-NOTICES.md](https://github.com/Drakcain/BD-AUTO/blob/$env:GITHUB_REF_NAME/THIRD-PARTY-NOTICES.md) for attribution, upstream licenses, and third-party project credits." `
+            --notes "Download `BD-AUTO-Setup.exe` if you want to install BD-AUTO. The checksum file is optional and is only for people who want to verify the installer manually. See [THIRD-PARTY-NOTICES.md](https://github.com/Drakcain/BD-AUTO/blob/$env:GITHUB_REF_NAME/THIRD-PARTY-NOTICES.md) for attribution, upstream licenses, and third-party project credits." `
             --generate-notes

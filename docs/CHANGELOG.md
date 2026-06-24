@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Clarified GitHub release download wording so normal users are directed to `BD-AUTO-Setup.exe`.
+- Marked `BD-AUTO-Setup.exe.sha256` as an optional advanced-user verification file in release-facing docs and workflow notes.
+
+## v1.1.4
+
+- Added a local updater shortcut and update/install hygiene hardening.
+- Preserved the installer-first BetterDiscord repair workflow and Discord-only scope.
+
 ## v1.1.3
 
 - Aligned the repo with the current release truth recorded in `VERSION`.

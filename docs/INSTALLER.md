@@ -52,5 +52,6 @@ The build script validates the repository, downloads the latest official BetterD
 ## Packaging Notes
 
 - BD-AUTO is installer-first for normal users.
+- GitHub Releases may also include `BD-AUTO-Setup.exe.sha256`, which is an optional manual verification file and not the installer.
 - A portable source bundle can still be run from source with `Install-BD-AUTO.cmd`.
 - The installer includes `LICENSE`, `INSTALL-NOTICE.txt`, `THIRD-PARTY-NOTICES.md`, `SIGNING.md`, and `VERSION`.

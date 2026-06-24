@@ -30,6 +30,12 @@ Primary release artifact:
 BD-AUTO-Setup.exe
 ```
 
+Optional advanced-user verification artifact:
+
+```text
+BD-AUTO-Setup.exe.sha256
+```
+
 ## Product Position
 
 BD-AUTO is a Windows BetterDiscord repair and add-on synchronization utility.
